@@ -380,16 +380,15 @@ function syncDocumentSnapshot(path, name, contentBefore, contentAfter, actionsSu
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   ChatConnection: function() { return /* binding */ ChatConnection; },
 /* harmony export */   getApiWsUrl: function() { return /* binding */ getApiWsUrl; },
-/* harmony export */   setApiConfig: function() { return /* binding */ setApiConfig; },
-/* harmony export */   startChat: function() { return /* binding */ startChat; }
+/* harmony export */   setApiConfig: function() { return /* binding */ setApiConfig; }
 /* harmony export */ });
 /**
  * WebSocket client for server-side Claude orchestration.
  *
- * Connects to the FastAPI /chat WebSocket endpoint. The server handles
- * all Claude API interaction; this client only executes tool calls
- * locally via the OfficeAdapter and sends results back.
+ * Maintains a persistent WebSocket connection to the FastAPI /chat endpoint.
+ * The server holds conversation history across messages within one connection.
  */
 var __awaiter = undefined && undefined.__awaiter || function (thisArg, _arguments, P, generator) {
   function adopt(value) {
@@ -513,159 +512,231 @@ function getApiWsUrl() {
   return _apiWsUrl;
 }
 /**
- * Start a chat session with the server.
- *
- * Opens a WebSocket, sends the user message, handles tool call/result
- * exchanges, and resolves with the final text response.
+ * Persistent WebSocket connection that preserves conversation history
+ * across multiple messages within a single session.
  */
-function startChat(app, message, selectedContent, executeAction, onStatus, signal) {
-  var _this = this;
-  return new Promise(function (resolve, reject) {
-    var url = _authToken ? "".concat(_apiWsUrl, "?token=").concat(encodeURIComponent(_authToken)) : _apiWsUrl;
-    var ws = new WebSocket(url);
-    var settled = false;
-    var lastResponseText = "";
-    var toolsUsed = [];
-    var cleanup = function cleanup() {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
-      }
-    };
-    var finish = function finish(text) {
-      if (!settled) {
-        settled = true;
-        cleanup();
-        resolve({
-          text: text,
-          toolsUsed: toolsUsed
-        });
-      }
-    };
-    var fail = function fail(err) {
-      if (!settled) {
-        settled = true;
-        cleanup();
-        reject(err);
-      }
-    };
-    // Abort support
-    if (signal) {
-      if (signal.aborted) {
-        reject(new DOMException("Aborted", "AbortError"));
-        return;
-      }
-      signal.addEventListener("abort", function () {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: "abort"
-          }));
-        }
-        fail(new DOMException("Aborted", "AbortError"));
-      });
+var ChatConnection = /** @class */function () {
+  function ChatConnection() {
+    this.ws = null;
+    this.connecting = null;
+    // Per-message state — set by sendMessage, used by onmessage handler
+    this.currentResolve = null;
+    this.currentReject = null;
+    this.currentExecuteAction = null;
+    this.currentOnStatus = null;
+    this.lastResponseText = "";
+    this.toolsUsed = [];
+    this.sources = [];
+  }
+  /**
+   * Ensure the WebSocket is connected. Reuses existing connection if open.
+   */
+  ChatConnection.prototype.ensureConnected = function () {
+    var _this = this;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
     }
-    ws.onopen = function () {
-      ws.send(JSON.stringify({
-        type: "start",
-        app: app,
-        message: message,
-        selectedContent: selectedContent || undefined
-      }));
-    };
-    ws.onmessage = function (event) {
-      return __awaiter(_this, void 0, void 0, function () {
-        var msg, _a, calls, results, _i, calls_1, call, result, err_1;
-        return __generator(this, function (_b) {
-          switch (_b.label) {
-            case 0:
-              try {
-                msg = JSON.parse(event.data);
-              } catch (_c) {
-                return [2 /*return*/];
-              }
-              _a = msg.type;
-              switch (_a) {
-                case "status":
-                  return [3 /*break*/, 1];
-                case "response":
-                  return [3 /*break*/, 2];
-                case "tool_calls":
-                  return [3 /*break*/, 3];
-                case "done":
-                  return [3 /*break*/, 10];
-                case "error":
-                  return [3 /*break*/, 11];
-              }
-              return [3 /*break*/, 12];
-            case 1:
-              onStatus === null || onStatus === void 0 ? void 0 : onStatus(msg.text);
-              return [3 /*break*/, 12];
-            case 2:
-              lastResponseText = msg.text;
-              return [3 /*break*/, 12];
-            case 3:
-              calls = msg.calls;
-              results = [];
-              _i = 0, calls_1 = calls;
-              _b.label = 4;
-            case 4:
-              if (!(_i < calls_1.length)) return [3 /*break*/, 9];
-              call = calls_1[_i];
-              _b.label = 5;
-            case 5:
-              _b.trys.push([5, 7,, 8]);
-              return [4 /*yield*/, executeAction(call.action)];
-            case 6:
-              result = _b.sent();
-              results.push({
-                id: call.id,
-                result: result !== null && result !== void 0 ? result : null
-              });
-              return [3 /*break*/, 8];
-            case 7:
-              err_1 = _b.sent();
-              results.push({
-                id: call.id,
-                error: err_1 instanceof Error ? err_1.message : "Unknown error"
-              });
-              return [3 /*break*/, 8];
-            case 8:
-              _i++;
-              return [3 /*break*/, 4];
-            case 9:
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                  type: "tool_results",
-                  results: results
-                }));
-              }
-              return [3 /*break*/, 12];
-            case 10:
-              toolsUsed = msg.toolsUsed || [];
-              finish(lastResponseText);
-              return [3 /*break*/, 12];
-            case 11:
-              fail(new Error(msg.message));
-              return [3 /*break*/, 12];
-            case 12:
-              return [2 /*return*/];
-          }
-        });
-      });
-    };
-    ws.onerror = function () {
-      fail(new Error("WebSocket connection failed. Is the Bluebook desktop app running?"));
-    };
-    ws.onclose = function (event) {
-      if (!settled) {
-        if (event.code === 1000 || event.code === 1005) {
-          finish(lastResponseText);
-        } else {
-          fail(new Error("Connection closed (".concat(event.code, "): ").concat(event.reason || "unknown")));
+    if (this.connecting) {
+      return this.connecting;
+    }
+    this.connecting = new Promise(function (resolve, reject) {
+      var url = _authToken ? "".concat(_apiWsUrl, "?token=").concat(encodeURIComponent(_authToken)) : _apiWsUrl;
+      var ws = new WebSocket(url);
+      ws.onopen = function () {
+        _this.ws = ws;
+        _this.connecting = null;
+        resolve();
+      };
+      ws.onerror = function () {
+        _this.ws = null;
+        _this.connecting = null;
+        reject(new Error("WebSocket connection failed. Is the Bluebook desktop app running?"));
+      };
+      ws.onclose = function () {
+        _this.ws = null;
+        _this.connecting = null;
+        // If there's a pending message, reject it
+        if (_this.currentReject) {
+          _this.currentReject(new Error("Connection closed unexpectedly"));
+          _this.clearMessageState();
         }
-      }
-    };
-  });
-}
+      };
+      ws.onmessage = function (event) {
+        return __awaiter(_this, void 0, void 0, function () {
+          var msg, _a, calls, results, _i, calls_1, call, result, err_1;
+          var _b;
+          return __generator(this, function (_c) {
+            switch (_c.label) {
+              case 0:
+                try {
+                  msg = JSON.parse(event.data);
+                } catch (_d) {
+                  return [2 /*return*/];
+                }
+                _a = msg.type;
+                switch (_a) {
+                  case "status":
+                    return [3 /*break*/, 1];
+                  case "response":
+                    return [3 /*break*/, 2];
+                  case "tool_calls":
+                    return [3 /*break*/, 3];
+                  case "sources":
+                    return [3 /*break*/, 10];
+                  case "done":
+                    return [3 /*break*/, 11];
+                  case "error":
+                    return [3 /*break*/, 12];
+                }
+                return [3 /*break*/, 13];
+              case 1:
+                (_b = this.currentOnStatus) === null || _b === void 0 ? void 0 : _b.call(this, msg.text);
+                return [3 /*break*/, 13];
+              case 2:
+                this.lastResponseText = msg.text;
+                return [3 /*break*/, 13];
+              case 3:
+                if (!this.currentExecuteAction) return [3 /*break*/, 13];
+                calls = msg.calls;
+                results = [];
+                _i = 0, calls_1 = calls;
+                _c.label = 4;
+              case 4:
+                if (!(_i < calls_1.length)) return [3 /*break*/, 9];
+                call = calls_1[_i];
+                _c.label = 5;
+              case 5:
+                _c.trys.push([5, 7,, 8]);
+                return [4 /*yield*/, this.currentExecuteAction(call.action)];
+              case 6:
+                result = _c.sent();
+                results.push({
+                  id: call.id,
+                  result: result !== null && result !== void 0 ? result : null
+                });
+                return [3 /*break*/, 8];
+              case 7:
+                err_1 = _c.sent();
+                results.push({
+                  id: call.id,
+                  error: err_1 instanceof Error ? err_1.message : "Unknown error"
+                });
+                return [3 /*break*/, 8];
+              case 8:
+                _i++;
+                return [3 /*break*/, 4];
+              case 9:
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                  this.ws.send(JSON.stringify({
+                    type: "tool_results",
+                    results: results
+                  }));
+                }
+                return [3 /*break*/, 13];
+              case 10:
+                this.sources = msg.sources || [];
+                return [3 /*break*/, 13];
+              case 11:
+                this.toolsUsed = msg.toolsUsed || [];
+                if (this.currentResolve) {
+                  this.currentResolve({
+                    text: this.lastResponseText,
+                    toolsUsed: this.toolsUsed,
+                    sources: this.sources
+                  });
+                }
+                this.clearMessageState();
+                return [3 /*break*/, 13];
+              case 12:
+                if (this.currentReject) {
+                  this.currentReject(new Error(msg.message));
+                }
+                this.clearMessageState();
+                return [3 /*break*/, 13];
+              case 13:
+                return [2 /*return*/];
+            }
+          });
+        });
+      };
+    });
+    return this.connecting;
+  };
+  ChatConnection.prototype.clearMessageState = function () {
+    this.currentResolve = null;
+    this.currentReject = null;
+    this.currentExecuteAction = null;
+    this.currentOnStatus = null;
+    this.lastResponseText = "";
+    this.toolsUsed = [];
+    this.sources = [];
+  };
+  /**
+   * Send a message over the persistent connection.
+   * Returns a promise that resolves with the assistant's response.
+   */
+  ChatConnection.prototype.sendMessage = function (app, message, selectedContent, executeAction, onStatus, signal, slideImage) {
+    return __awaiter(this, void 0, void 0, function () {
+      var _this = this;
+      return __generator(this, function (_a) {
+        switch (_a.label) {
+          case 0:
+            return [4 /*yield*/, this.ensureConnected()];
+          case 1:
+            _a.sent();
+            return [2 /*return*/, new Promise(function (resolve, reject) {
+              // Set per-message state
+              _this.currentResolve = resolve;
+              _this.currentReject = reject;
+              _this.currentExecuteAction = executeAction;
+              _this.currentOnStatus = onStatus !== null && onStatus !== void 0 ? onStatus : null;
+              _this.lastResponseText = "";
+              _this.toolsUsed = [];
+              _this.sources = [];
+              // Abort support
+              if (signal) {
+                if (signal.aborted) {
+                  _this.clearMessageState();
+                  reject(new DOMException("Aborted", "AbortError"));
+                  return;
+                }
+                signal.addEventListener("abort", function () {
+                  if (_this.ws && _this.ws.readyState === WebSocket.OPEN) {
+                    _this.ws.send(JSON.stringify({
+                      type: "abort"
+                    }));
+                  }
+                  if (_this.currentReject) {
+                    _this.currentReject(new DOMException("Aborted", "AbortError"));
+                  }
+                  _this.clearMessageState();
+                }, {
+                  once: true
+                });
+              }
+              _this.ws.send(JSON.stringify({
+                type: "start",
+                app: app,
+                message: message,
+                selectedContent: selectedContent || undefined,
+                slideImage: slideImage || undefined
+              }));
+            })];
+        }
+      });
+    });
+  };
+  /** Close the connection and reset conversation history. */
+  ChatConnection.prototype.disconnect = function () {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.clearMessageState();
+  };
+  return ChatConnection;
+}();
+
 
 /***/ }),
 
@@ -1021,8 +1092,10 @@ var excelAdapter = {
                 return [3 /*break*/, 60];
               case "unmergeCells":
                 return [3 /*break*/, 62];
+              case "createPivotTable":
+                return [3 /*break*/, 64];
             }
-            return [3 /*break*/, 64];
+            return [3 /*break*/, 66];
           case 1:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1048,7 +1121,7 @@ var excelAdapter = {
             })];
           case 2:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 3:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1118,7 +1191,7 @@ var excelAdapter = {
             })];
           case 6:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 7:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1195,7 +1268,7 @@ var excelAdapter = {
             })];
           case 10:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 11:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1291,7 +1364,7 @@ var excelAdapter = {
             })];
           case 13:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 14:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1355,7 +1428,7 @@ var excelAdapter = {
             })];
           case 16:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 17:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1375,7 +1448,7 @@ var excelAdapter = {
             })];
           case 18:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 19:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1415,7 +1488,7 @@ var excelAdapter = {
             })];
           case 21:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 22:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1435,7 +1508,7 @@ var excelAdapter = {
             })];
           case 23:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 24:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1455,7 +1528,7 @@ var excelAdapter = {
             })];
           case 25:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 26:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1513,7 +1586,7 @@ var excelAdapter = {
             })];
           case 28:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 29:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1538,7 +1611,7 @@ var excelAdapter = {
             })];
           case 30:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 31:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1560,7 +1633,7 @@ var excelAdapter = {
             })];
           case 32:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 33:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1841,7 +1914,7 @@ var excelAdapter = {
             })];
           case 38:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 39:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1864,7 +1937,7 @@ var excelAdapter = {
             })];
           case 40:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 41:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1887,7 +1960,7 @@ var excelAdapter = {
             })];
           case 42:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 43:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1910,7 +1983,7 @@ var excelAdapter = {
             })];
           case 44:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 45:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1937,7 +2010,7 @@ var excelAdapter = {
             })];
           case 46:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 47:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1983,7 +2056,7 @@ var excelAdapter = {
             })];
           case 48:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 49:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2004,7 +2077,7 @@ var excelAdapter = {
             })];
           case 50:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 51:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2027,7 +2100,7 @@ var excelAdapter = {
             })];
           case 52:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 53:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2048,7 +2121,7 @@ var excelAdapter = {
             })];
           case 54:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 55:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2110,7 +2183,7 @@ var excelAdapter = {
             })];
           case 57:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 58:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2136,7 +2209,7 @@ var excelAdapter = {
             })];
           case 59:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 60:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2157,7 +2230,7 @@ var excelAdapter = {
             })];
           case 61:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 62:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2178,11 +2251,61 @@ var excelAdapter = {
             })];
           case 63:
             _b.sent();
-            return [3 /*break*/, 65];
+            return [3 /*break*/, 67];
           case 64:
-            console.warn("Unknown action type: ".concat(action.type));
-            _b.label = 65;
+            return [4 /*yield*/, Excel.run(function (context) {
+              return __awaiter(_this, void 0, void 0, function () {
+                var srcSheet, sourceRange, pivotName, destSheet, destCell, pivotTable, rows, _i, rows_1, row, columns, _a, columns_1, col, values, fnMap, _b, values_1, val, dataHierarchy;
+                return __generator(this, function (_c) {
+                  switch (_c.label) {
+                    case 0:
+                      srcSheet = action.params.sourceSheet ? context.workbook.worksheets.getItem(action.params.sourceSheet) : context.workbook.worksheets.getActiveWorksheet();
+                      sourceRange = srcSheet.getRange(action.params.sourceAddress);
+                      pivotName = action.params.pivotName;
+                      destSheet = context.workbook.worksheets.add(pivotName);
+                      destCell = destSheet.getRange("A1");
+                      pivotTable = context.workbook.pivotTables.add(pivotName, sourceRange, destCell);
+                      rows = action.params.rows;
+                      for (_i = 0, rows_1 = rows; _i < rows_1.length; _i++) {
+                        row = rows_1[_i];
+                        pivotTable.rowHierarchies.add(pivotTable.hierarchies.getItem(row));
+                      }
+                      columns = action.params.columns || [];
+                      for (_a = 0, columns_1 = columns; _a < columns_1.length; _a++) {
+                        col = columns_1[_a];
+                        pivotTable.columnHierarchies.add(pivotTable.hierarchies.getItem(col));
+                      }
+                      values = action.params.values;
+                      fnMap = {
+                        sum: Excel.AggregationFunction.sum,
+                        count: Excel.AggregationFunction.count,
+                        average: Excel.AggregationFunction.average,
+                        max: Excel.AggregationFunction.max,
+                        min: Excel.AggregationFunction.min
+                      };
+                      for (_b = 0, values_1 = values; _b < values_1.length; _b++) {
+                        val = values_1[_b];
+                        dataHierarchy = pivotTable.dataHierarchies.add(pivotTable.hierarchies.getItem(val.name));
+                        if (val.function && fnMap[val.function]) {
+                          dataHierarchy.summarizeBy = fnMap[val.function];
+                        }
+                      }
+                      destSheet.activate();
+                      return [4 /*yield*/, context.sync()];
+                    case 1:
+                      _c.sent();
+                      return [2 /*return*/];
+                  }
+                });
+              });
+            })];
           case 65:
+            _b.sent();
+            return [3 /*break*/, 67];
+          case 66:
+            console.warn("Unknown action type: ".concat(action.type));
+            _b.label = 67;
+          case 67:
             return [2 /*return*/, undefined];
         }
       });
@@ -2234,7 +2357,7 @@ __webpack_require__.r(__webpack_exports__);
 
 var ___CSS_LOADER_EXPORT___ = _node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_1___default()((_node_modules_css_loader_dist_runtime_sourceMaps_js__WEBPACK_IMPORTED_MODULE_0___default()));
 // Module
-___CSS_LOADER_EXPORT___.push([module.id, "/*! tailwindcss v4.2.2 | MIT License | https://tailwindcss.com */\n@layer properties;\n@layer theme, base, components, utilities;\n@layer theme {\n  :root, :host {\n    --font-sans: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\",\n      \"Courier New\", monospace;\n    --spacing: 0.25rem;\n    --text-xs: 0.75rem;\n    --text-xs--line-height: calc(1 / 0.75);\n    --text-sm: 0.875rem;\n    --text-sm--line-height: calc(1.25 / 0.875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;\n    --default-transition-duration: 150ms;\n    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n    --default-font-family: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n@layer base {\n  *, ::after, ::before, ::backdrop, ::file-selector-button {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n    border: 0 solid;\n  }\n  html, :host {\n    line-height: 1.5;\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    font-family: var(--default-font-family, ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n  b, strong {\n    font-weight: bolder;\n  }\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n  small {\n    font-size: 80%;\n  }\n  sub, sup {\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n    vertical-align: baseline;\n  }\n  sub {\n    bottom: -0.25em;\n  }\n  sup {\n    top: -0.5em;\n  }\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n  :-moz-focusring {\n    outline: auto;\n  }\n  progress {\n    vertical-align: baseline;\n  }\n  summary {\n    display: list-item;\n  }\n  ol, ul, menu {\n    list-style: none;\n  }\n  img, svg, video, canvas, audio, iframe, embed, object {\n    display: block;\n    vertical-align: middle;\n  }\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n  button, input, select, optgroup, textarea, ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    border-radius: 0;\n    background-color: transparent;\n    opacity: 1;\n  }\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n  ::placeholder {\n    opacity: 1;\n  }\n  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentcolor;\n      @supports (color: color-mix(in lab, red, red)) {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n  textarea {\n    resize: vertical;\n  }\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n  ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n  button, input:where([type=\"button\"], [type=\"reset\"], [type=\"submit\"]), ::file-selector-button {\n    appearance: button;\n  }\n  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button {\n    height: auto;\n  }\n  [hidden]:where(:not([hidden=\"until-found\"])) {\n    display: none !important;\n  }\n}\n@layer utilities {\n  .visible {\n    visibility: visible;\n  }\n  .absolute {\n    position: absolute;\n  }\n  .relative {\n    position: relative;\n  }\n  .inset-0 {\n    inset: calc(var(--spacing) * 0);\n  }\n  .start {\n    inset-inline-start: var(--spacing);\n  }\n  .end {\n    inset-inline-end: var(--spacing);\n  }\n  .container {\n    width: 100%;\n    @media (width >= 40rem) {\n      max-width: 40rem;\n    }\n    @media (width >= 48rem) {\n      max-width: 48rem;\n    }\n    @media (width >= 64rem) {\n      max-width: 64rem;\n    }\n    @media (width >= 80rem) {\n      max-width: 80rem;\n    }\n    @media (width >= 96rem) {\n      max-width: 96rem;\n    }\n  }\n  .mt-1 {\n    margin-top: calc(var(--spacing) * 1);\n  }\n  .mb-0\\.5 {\n    margin-bottom: calc(var(--spacing) * 0.5);\n  }\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n  .mb-3 {\n    margin-bottom: calc(var(--spacing) * 3);\n  }\n  .mb-6 {\n    margin-bottom: calc(var(--spacing) * 6);\n  }\n  .ml-4 {\n    margin-left: calc(var(--spacing) * 4);\n  }\n  .block {\n    display: block;\n  }\n  .flex {\n    display: flex;\n  }\n  .inline {\n    display: inline;\n  }\n  .inline-flex {\n    display: inline-flex;\n  }\n  .table {\n    display: table;\n  }\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n  .h-3 {\n    height: calc(var(--spacing) * 3);\n  }\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n  .h-full {\n    height: 100%;\n  }\n  .h-screen {\n    height: 100vh;\n  }\n  .max-h-\\[200px\\] {\n    max-height: 200px;\n  }\n  .min-h-\\[56px\\] {\n    min-height: 56px;\n  }\n  .w-2 {\n    width: calc(var(--spacing) * 2);\n  }\n  .w-3 {\n    width: calc(var(--spacing) * 3);\n  }\n  .w-7 {\n    width: calc(var(--spacing) * 7);\n  }\n  .w-full {\n    width: 100%;\n  }\n  .max-w-\\[240px\\] {\n    max-width: 240px;\n  }\n  .max-w-none {\n    max-width: none;\n  }\n  .min-w-0 {\n    min-width: calc(var(--spacing) * 0);\n  }\n  .flex-1 {\n    flex: 1;\n  }\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n  .resize-none {\n    resize: none;\n  }\n  .list-decimal {\n    list-style-type: decimal;\n  }\n  .list-disc {\n    list-style-type: disc;\n  }\n  .flex-col {\n    flex-direction: column;\n  }\n  .items-center {\n    align-items: center;\n  }\n  .items-start {\n    align-items: flex-start;\n  }\n  .justify-between {\n    justify-content: space-between;\n  }\n  .justify-center {\n    justify-content: center;\n  }\n  .gap-1 {\n    gap: calc(var(--spacing) * 1);\n  }\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n  .overflow-hidden {\n    overflow: hidden;\n  }\n  .overflow-x-auto {\n    overflow-x: auto;\n  }\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n  .rounded {\n    border-radius: 0.25rem;\n  }\n  .rounded-full {\n    border-radius: calc(infinity * 1px);\n  }\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n  .rounded-md {\n    border-radius: calc(var(--radius) * 0.8);\n  }\n  .rounded-t-lg {\n    border-top-left-radius: var(--radius);\n    border-top-right-radius: var(--radius);\n  }\n  .rounded-b-lg {\n    border-bottom-right-radius: var(--radius);\n    border-bottom-left-radius: var(--radius);\n  }\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n  .border-border\\/50 {\n    border-color: var(--border);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--border) 50%, transparent);\n    }\n  }\n  .border-input {\n    border-color: var(--input);\n  }\n  .bg-accent-foreground {\n    background-color: var(--accent-foreground);\n  }\n  .bg-background {\n    background-color: var(--background);\n  }\n  .bg-muted {\n    background-color: var(--muted);\n  }\n  .bg-primary {\n    background-color: var(--primary);\n  }\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n  .p-8 {\n    padding: calc(var(--spacing) * 8);\n  }\n  .px-1 {\n    padding-inline: calc(var(--spacing) * 1);\n  }\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * 0.5);\n  }\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n  .py-2\\.5 {\n    padding-block: calc(var(--spacing) * 2.5);\n  }\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n  .pt-\\[9px\\] {\n    padding-top: 9px;\n  }\n  .pb-0 {\n    padding-bottom: calc(var(--spacing) * 0);\n  }\n  .text-center {\n    text-align: center;\n  }\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n  .font-sans {\n    font-family: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n  }\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n  .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n  .break-words {\n    overflow-wrap: break-word;\n  }\n  .text-destructive {\n    color: var(--destructive);\n  }\n  .text-foreground {\n    color: var(--foreground);\n  }\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n  .text-muted-foreground\\/40 {\n    color: var(--muted-foreground);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);\n    }\n  }\n  .text-primary {\n    color: var(--primary);\n  }\n  .italic {\n    font-style: italic;\n  }\n  .underline {\n    text-decoration-line: underline;\n  }\n  .placeholder-muted-foreground {\n    &::placeholder {\n      color: var(--muted-foreground);\n    }\n  }\n  .opacity-25 {\n    opacity: 25%;\n  }\n  .opacity-75 {\n    opacity: 75%;\n  }\n  .shadow-xs {\n    --tw-shadow: 0 1px 2px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n  .last\\:mb-0 {\n    &:last-child {\n      margin-bottom: calc(var(--spacing) * 0);\n    }\n  }\n  .focus-within\\:border-ring {\n    &:focus-within {\n      border-color: var(--ring);\n    }\n  }\n  .focus-within\\:ring-2 {\n    &:focus-within {\n      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n    }\n  }\n  .focus-within\\:ring-ring\\/50 {\n    &:focus-within {\n      --tw-ring-color: var(--ring);\n      @supports (color: color-mix(in lab, red, red)) {\n        --tw-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);\n      }\n    }\n  }\n  .hover\\:bg-accent {\n    &:hover {\n      @media (hover: hover) {\n        background-color: var(--accent);\n      }\n    }\n  }\n  .hover\\:bg-destructive\\/10 {\n    &:hover {\n      @media (hover: hover) {\n        background-color: var(--destructive);\n        @supports (color: color-mix(in lab, red, red)) {\n          background-color: color-mix(in oklab, var(--destructive) 10%, transparent);\n        }\n      }\n    }\n  }\n  .hover\\:text-foreground {\n    &:hover {\n      @media (hover: hover) {\n        color: var(--foreground);\n      }\n    }\n  }\n  .disabled\\:opacity-30 {\n    &:disabled {\n      opacity: 30%;\n    }\n  }\n}\n:root {\n  --background: oklch(1 0 0);\n  --foreground: oklch(0.145 0.008 326);\n  --card: oklch(1 0 0);\n  --card-foreground: oklch(0.145 0.008 326);\n  --primary: oklch(0.511 0.096 186.391);\n  --primary-foreground: oklch(0.984 0.014 180.72);\n  --secondary: oklch(0.967 0.001 286.375);\n  --secondary-foreground: oklch(0.21 0.006 285.885);\n  --muted: oklch(0.96 0.003 325.6);\n  --muted-foreground: oklch(0.542 0.034 322.5);\n  --accent: oklch(0.96 0.003 325.6);\n  --accent-foreground: oklch(0.212 0.019 322.12);\n  --destructive: oklch(0.577 0.245 27.325);\n  --border: oklch(0.922 0.005 325.62);\n  --input: oklch(0.922 0.005 325.62);\n  --ring: oklch(0.711 0.019 323.02);\n  --radius: 0.625rem;\n}\n@layer base {\n  * {\n    border-color: var(--border);\n  }\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n    font-family: var(--font-sans);\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    margin: 0;\n    padding: 0;\n  }\n}\n@property --tw-border-style {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: solid;\n}\n@property --tw-leading {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-font-weight {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-shadow-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-shadow-alpha {\n  syntax: \"<percentage>\";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-inset-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-shadow-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-inset-shadow-alpha {\n  syntax: \"<percentage>\";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-ring-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-ring-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-ring-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-inset-ring-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-ring-inset {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-ring-offset-width {\n  syntax: \"<length>\";\n  inherits: false;\n  initial-value: 0px;\n}\n@property --tw-ring-offset-color {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: #fff;\n}\n@property --tw-ring-offset-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n@keyframes pulse {\n  50% {\n    opacity: 0.5;\n  }\n}\n@layer properties {\n  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {\n    *, ::before, ::after, ::backdrop {\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n    }\n  }\n}\n", "",{"version":3,"sources":["<no source>","webpack://./../node_modules/tailwindcss/index.css","webpack://./../shared/src/styles.css"],"names":[],"mappings":"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","sourcesContent":[null,"@layer theme, base, components, utilities;\n\n@layer theme {\n  @theme default {\n    --font-sans:\n      ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\";\n    --font-serif: ui-serif, Georgia, Cambria, \"Times New Roman\", Times, serif;\n    --font-mono:\n      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\",\n      \"Courier New\", monospace;\n\n    --color-red-50: oklch(97.1% 0.013 17.38);\n    --color-red-100: oklch(93.6% 0.032 17.717);\n    --color-red-200: oklch(88.5% 0.062 18.334);\n    --color-red-300: oklch(80.8% 0.114 19.571);\n    --color-red-400: oklch(70.4% 0.191 22.216);\n    --color-red-500: oklch(63.7% 0.237 25.331);\n    --color-red-600: oklch(57.7% 0.245 27.325);\n    --color-red-700: oklch(50.5% 0.213 27.518);\n    --color-red-800: oklch(44.4% 0.177 26.899);\n    --color-red-900: oklch(39.6% 0.141 25.723);\n    --color-red-950: oklch(25.8% 0.092 26.042);\n\n    --color-orange-50: oklch(98% 0.016 73.684);\n    --color-orange-100: oklch(95.4% 0.038 75.164);\n    --color-orange-200: oklch(90.1% 0.076 70.697);\n    --color-orange-300: oklch(83.7% 0.128 66.29);\n    --color-orange-400: oklch(75% 0.183 55.934);\n    --color-orange-500: oklch(70.5% 0.213 47.604);\n    --color-orange-600: oklch(64.6% 0.222 41.116);\n    --color-orange-700: oklch(55.3% 0.195 38.402);\n    --color-orange-800: oklch(47% 0.157 37.304);\n    --color-orange-900: oklch(40.8% 0.123 38.172);\n    --color-orange-950: oklch(26.6% 0.079 36.259);\n\n    --color-amber-50: oklch(98.7% 0.022 95.277);\n    --color-amber-100: oklch(96.2% 0.059 95.617);\n    --color-amber-200: oklch(92.4% 0.12 95.746);\n    --color-amber-300: oklch(87.9% 0.169 91.605);\n    --color-amber-400: oklch(82.8% 0.189 84.429);\n    --color-amber-500: oklch(76.9% 0.188 70.08);\n    --color-amber-600: oklch(66.6% 0.179 58.318);\n    --color-amber-700: oklch(55.5% 0.163 48.998);\n    --color-amber-800: oklch(47.3% 0.137 46.201);\n    --color-amber-900: oklch(41.4% 0.112 45.904);\n    --color-amber-950: oklch(27.9% 0.077 45.635);\n\n    --color-yellow-50: oklch(98.7% 0.026 102.212);\n    --color-yellow-100: oklch(97.3% 0.071 103.193);\n    --color-yellow-200: oklch(94.5% 0.129 101.54);\n    --color-yellow-300: oklch(90.5% 0.182 98.111);\n    --color-yellow-400: oklch(85.2% 0.199 91.936);\n    --color-yellow-500: oklch(79.5% 0.184 86.047);\n    --color-yellow-600: oklch(68.1% 0.162 75.834);\n    --color-yellow-700: oklch(55.4% 0.135 66.442);\n    --color-yellow-800: oklch(47.6% 0.114 61.907);\n    --color-yellow-900: oklch(42.1% 0.095 57.708);\n    --color-yellow-950: oklch(28.6% 0.066 53.813);\n\n    --color-lime-50: oklch(98.6% 0.031 120.757);\n    --color-lime-100: oklch(96.7% 0.067 122.328);\n    --color-lime-200: oklch(93.8% 0.127 124.321);\n    --color-lime-300: oklch(89.7% 0.196 126.665);\n    --color-lime-400: oklch(84.1% 0.238 128.85);\n    --color-lime-500: oklch(76.8% 0.233 130.85);\n    --color-lime-600: oklch(64.8% 0.2 131.684);\n    --color-lime-700: oklch(53.2% 0.157 131.589);\n    --color-lime-800: oklch(45.3% 0.124 130.933);\n    --color-lime-900: oklch(40.5% 0.101 131.063);\n    --color-lime-950: oklch(27.4% 0.072 132.109);\n\n    --color-green-50: oklch(98.2% 0.018 155.826);\n    --color-green-100: oklch(96.2% 0.044 156.743);\n    --color-green-200: oklch(92.5% 0.084 155.995);\n    --color-green-300: oklch(87.1% 0.15 154.449);\n    --color-green-400: oklch(79.2% 0.209 151.711);\n    --color-green-500: oklch(72.3% 0.219 149.579);\n    --color-green-600: oklch(62.7% 0.194 149.214);\n    --color-green-700: oklch(52.7% 0.154 150.069);\n    --color-green-800: oklch(44.8% 0.119 151.328);\n    --color-green-900: oklch(39.3% 0.095 152.535);\n    --color-green-950: oklch(26.6% 0.065 152.934);\n\n    --color-emerald-50: oklch(97.9% 0.021 166.113);\n    --color-emerald-100: oklch(95% 0.052 163.051);\n    --color-emerald-200: oklch(90.5% 0.093 164.15);\n    --color-emerald-300: oklch(84.5% 0.143 164.978);\n    --color-emerald-400: oklch(76.5% 0.177 163.223);\n    --color-emerald-500: oklch(69.6% 0.17 162.48);\n    --color-emerald-600: oklch(59.6% 0.145 163.225);\n    --color-emerald-700: oklch(50.8% 0.118 165.612);\n    --color-emerald-800: oklch(43.2% 0.095 166.913);\n    --color-emerald-900: oklch(37.8% 0.077 168.94);\n    --color-emerald-950: oklch(26.2% 0.051 172.552);\n\n    --color-teal-50: oklch(98.4% 0.014 180.72);\n    --color-teal-100: oklch(95.3% 0.051 180.801);\n    --color-teal-200: oklch(91% 0.096 180.426);\n    --color-teal-300: oklch(85.5% 0.138 181.071);\n    --color-teal-400: oklch(77.7% 0.152 181.912);\n    --color-teal-500: oklch(70.4% 0.14 182.503);\n    --color-teal-600: oklch(60% 0.118 184.704);\n    --color-teal-700: oklch(51.1% 0.096 186.391);\n    --color-teal-800: oklch(43.7% 0.078 188.216);\n    --color-teal-900: oklch(38.6% 0.063 188.416);\n    --color-teal-950: oklch(27.7% 0.046 192.524);\n\n    --color-cyan-50: oklch(98.4% 0.019 200.873);\n    --color-cyan-100: oklch(95.6% 0.045 203.388);\n    --color-cyan-200: oklch(91.7% 0.08 205.041);\n    --color-cyan-300: oklch(86.5% 0.127 207.078);\n    --color-cyan-400: oklch(78.9% 0.154 211.53);\n    --color-cyan-500: oklch(71.5% 0.143 215.221);\n    --color-cyan-600: oklch(60.9% 0.126 221.723);\n    --color-cyan-700: oklch(52% 0.105 223.128);\n    --color-cyan-800: oklch(45% 0.085 224.283);\n    --color-cyan-900: oklch(39.8% 0.07 227.392);\n    --color-cyan-950: oklch(30.2% 0.056 229.695);\n\n    --color-sky-50: oklch(97.7% 0.013 236.62);\n    --color-sky-100: oklch(95.1% 0.026 236.824);\n    --color-sky-200: oklch(90.1% 0.058 230.902);\n    --color-sky-300: oklch(82.8% 0.111 230.318);\n    --color-sky-400: oklch(74.6% 0.16 232.661);\n    --color-sky-500: oklch(68.5% 0.169 237.323);\n    --color-sky-600: oklch(58.8% 0.158 241.966);\n    --color-sky-700: oklch(50% 0.134 242.749);\n    --color-sky-800: oklch(44.3% 0.11 240.79);\n    --color-sky-900: oklch(39.1% 0.09 240.876);\n    --color-sky-950: oklch(29.3% 0.066 243.157);\n\n    --color-blue-50: oklch(97% 0.014 254.604);\n    --color-blue-100: oklch(93.2% 0.032 255.585);\n    --color-blue-200: oklch(88.2% 0.059 254.128);\n    --color-blue-300: oklch(80.9% 0.105 251.813);\n    --color-blue-400: oklch(70.7% 0.165 254.624);\n    --color-blue-500: oklch(62.3% 0.214 259.815);\n    --color-blue-600: oklch(54.6% 0.245 262.881);\n    --color-blue-700: oklch(48.8% 0.243 264.376);\n    --color-blue-800: oklch(42.4% 0.199 265.638);\n    --color-blue-900: oklch(37.9% 0.146 265.522);\n    --color-blue-950: oklch(28.2% 0.091 267.935);\n\n    --color-indigo-50: oklch(96.2% 0.018 272.314);\n    --color-indigo-100: oklch(93% 0.034 272.788);\n    --color-indigo-200: oklch(87% 0.065 274.039);\n    --color-indigo-300: oklch(78.5% 0.115 274.713);\n    --color-indigo-400: oklch(67.3% 0.182 276.935);\n    --color-indigo-500: oklch(58.5% 0.233 277.117);\n    --color-indigo-600: oklch(51.1% 0.262 276.966);\n    --color-indigo-700: oklch(45.7% 0.24 277.023);\n    --color-indigo-800: oklch(39.8% 0.195 277.366);\n    --color-indigo-900: oklch(35.9% 0.144 278.697);\n    --color-indigo-950: oklch(25.7% 0.09 281.288);\n\n    --color-violet-50: oklch(96.9% 0.016 293.756);\n    --color-violet-100: oklch(94.3% 0.029 294.588);\n    --color-violet-200: oklch(89.4% 0.057 293.283);\n    --color-violet-300: oklch(81.1% 0.111 293.571);\n    --color-violet-400: oklch(70.2% 0.183 293.541);\n    --color-violet-500: oklch(60.6% 0.25 292.717);\n    --color-violet-600: oklch(54.1% 0.281 293.009);\n    --color-violet-700: oklch(49.1% 0.27 292.581);\n    --color-violet-800: oklch(43.2% 0.232 292.759);\n    --color-violet-900: oklch(38% 0.189 293.745);\n    --color-violet-950: oklch(28.3% 0.141 291.089);\n\n    --color-purple-50: oklch(97.7% 0.014 308.299);\n    --color-purple-100: oklch(94.6% 0.033 307.174);\n    --color-purple-200: oklch(90.2% 0.063 306.703);\n    --color-purple-300: oklch(82.7% 0.119 306.383);\n    --color-purple-400: oklch(71.4% 0.203 305.504);\n    --color-purple-500: oklch(62.7% 0.265 303.9);\n    --color-purple-600: oklch(55.8% 0.288 302.321);\n    --color-purple-700: oklch(49.6% 0.265 301.924);\n    --color-purple-800: oklch(43.8% 0.218 303.724);\n    --color-purple-900: oklch(38.1% 0.176 304.987);\n    --color-purple-950: oklch(29.1% 0.149 302.717);\n\n    --color-fuchsia-50: oklch(97.7% 0.017 320.058);\n    --color-fuchsia-100: oklch(95.2% 0.037 318.852);\n    --color-fuchsia-200: oklch(90.3% 0.076 319.62);\n    --color-fuchsia-300: oklch(83.3% 0.145 321.434);\n    --color-fuchsia-400: oklch(74% 0.238 322.16);\n    --color-fuchsia-500: oklch(66.7% 0.295 322.15);\n    --color-fuchsia-600: oklch(59.1% 0.293 322.896);\n    --color-fuchsia-700: oklch(51.8% 0.253 323.949);\n    --color-fuchsia-800: oklch(45.2% 0.211 324.591);\n    --color-fuchsia-900: oklch(40.1% 0.17 325.612);\n    --color-fuchsia-950: oklch(29.3% 0.136 325.661);\n\n    --color-pink-50: oklch(97.1% 0.014 343.198);\n    --color-pink-100: oklch(94.8% 0.028 342.258);\n    --color-pink-200: oklch(89.9% 0.061 343.231);\n    --color-pink-300: oklch(82.3% 0.12 346.018);\n    --color-pink-400: oklch(71.8% 0.202 349.761);\n    --color-pink-500: oklch(65.6% 0.241 354.308);\n    --color-pink-600: oklch(59.2% 0.249 0.584);\n    --color-pink-700: oklch(52.5% 0.223 3.958);\n    --color-pink-800: oklch(45.9% 0.187 3.815);\n    --color-pink-900: oklch(40.8% 0.153 2.432);\n    --color-pink-950: oklch(28.4% 0.109 3.907);\n\n    --color-rose-50: oklch(96.9% 0.015 12.422);\n    --color-rose-100: oklch(94.1% 0.03 12.58);\n    --color-rose-200: oklch(89.2% 0.058 10.001);\n    --color-rose-300: oklch(81% 0.117 11.638);\n    --color-rose-400: oklch(71.2% 0.194 13.428);\n    --color-rose-500: oklch(64.5% 0.246 16.439);\n    --color-rose-600: oklch(58.6% 0.253 17.585);\n    --color-rose-700: oklch(51.4% 0.222 16.935);\n    --color-rose-800: oklch(45.5% 0.188 13.697);\n    --color-rose-900: oklch(41% 0.159 10.272);\n    --color-rose-950: oklch(27.1% 0.105 12.094);\n\n    --color-slate-50: oklch(98.4% 0.003 247.858);\n    --color-slate-100: oklch(96.8% 0.007 247.896);\n    --color-slate-200: oklch(92.9% 0.013 255.508);\n    --color-slate-300: oklch(86.9% 0.022 252.894);\n    --color-slate-400: oklch(70.4% 0.04 256.788);\n    --color-slate-500: oklch(55.4% 0.046 257.417);\n    --color-slate-600: oklch(44.6% 0.043 257.281);\n    --color-slate-700: oklch(37.2% 0.044 257.287);\n    --color-slate-800: oklch(27.9% 0.041 260.031);\n    --color-slate-900: oklch(20.8% 0.042 265.755);\n    --color-slate-950: oklch(12.9% 0.042 264.695);\n\n    --color-gray-50: oklch(98.5% 0.002 247.839);\n    --color-gray-100: oklch(96.7% 0.003 264.542);\n    --color-gray-200: oklch(92.8% 0.006 264.531);\n    --color-gray-300: oklch(87.2% 0.01 258.338);\n    --color-gray-400: oklch(70.7% 0.022 261.325);\n    --color-gray-500: oklch(55.1% 0.027 264.364);\n    --color-gray-600: oklch(44.6% 0.03 256.802);\n    --color-gray-700: oklch(37.3% 0.034 259.733);\n    --color-gray-800: oklch(27.8% 0.033 256.848);\n    --color-gray-900: oklch(21% 0.034 264.665);\n    --color-gray-950: oklch(13% 0.028 261.692);\n\n    --color-zinc-50: oklch(98.5% 0 0);\n    --color-zinc-100: oklch(96.7% 0.001 286.375);\n    --color-zinc-200: oklch(92% 0.004 286.32);\n    --color-zinc-300: oklch(87.1% 0.006 286.286);\n    --color-zinc-400: oklch(70.5% 0.015 286.067);\n    --color-zinc-500: oklch(55.2% 0.016 285.938);\n    --color-zinc-600: oklch(44.2% 0.017 285.786);\n    --color-zinc-700: oklch(37% 0.013 285.805);\n    --color-zinc-800: oklch(27.4% 0.006 286.033);\n    --color-zinc-900: oklch(21% 0.006 285.885);\n    --color-zinc-950: oklch(14.1% 0.005 285.823);\n\n    --color-neutral-50: oklch(98.5% 0 0);\n    --color-neutral-100: oklch(97% 0 0);\n    --color-neutral-200: oklch(92.2% 0 0);\n    --color-neutral-300: oklch(87% 0 0);\n    --color-neutral-400: oklch(70.8% 0 0);\n    --color-neutral-500: oklch(55.6% 0 0);\n    --color-neutral-600: oklch(43.9% 0 0);\n    --color-neutral-700: oklch(37.1% 0 0);\n    --color-neutral-800: oklch(26.9% 0 0);\n    --color-neutral-900: oklch(20.5% 0 0);\n    --color-neutral-950: oklch(14.5% 0 0);\n\n    --color-stone-50: oklch(98.5% 0.001 106.423);\n    --color-stone-100: oklch(97% 0.001 106.424);\n    --color-stone-200: oklch(92.3% 0.003 48.717);\n    --color-stone-300: oklch(86.9% 0.005 56.366);\n    --color-stone-400: oklch(70.9% 0.01 56.259);\n    --color-stone-500: oklch(55.3% 0.013 58.071);\n    --color-stone-600: oklch(44.4% 0.011 73.639);\n    --color-stone-700: oklch(37.4% 0.01 67.558);\n    --color-stone-800: oklch(26.8% 0.007 34.298);\n    --color-stone-900: oklch(21.6% 0.006 56.043);\n    --color-stone-950: oklch(14.7% 0.004 49.25);\n\n    --color-mauve-50: oklch(98.5% 0 0);\n    --color-mauve-100: oklch(96% 0.003 325.6);\n    --color-mauve-200: oklch(92.2% 0.005 325.62);\n    --color-mauve-300: oklch(86.5% 0.012 325.68);\n    --color-mauve-400: oklch(71.1% 0.019 323.02);\n    --color-mauve-500: oklch(54.2% 0.034 322.5);\n    --color-mauve-600: oklch(43.5% 0.029 321.78);\n    --color-mauve-700: oklch(36.4% 0.029 323.89);\n    --color-mauve-800: oklch(26.3% 0.024 320.12);\n    --color-mauve-900: oklch(21.2% 0.019 322.12);\n    --color-mauve-950: oklch(14.5% 0.008 326);\n\n    --color-olive-50: oklch(98.8% 0.003 106.5);\n    --color-olive-100: oklch(96.6% 0.005 106.5);\n    --color-olive-200: oklch(93% 0.007 106.5);\n    --color-olive-300: oklch(88% 0.011 106.6);\n    --color-olive-400: oklch(73.7% 0.021 106.9);\n    --color-olive-500: oklch(58% 0.031 107.3);\n    --color-olive-600: oklch(46.6% 0.025 107.3);\n    --color-olive-700: oklch(39.4% 0.023 107.4);\n    --color-olive-800: oklch(28.6% 0.016 107.4);\n    --color-olive-900: oklch(22.8% 0.013 107.4);\n    --color-olive-950: oklch(15.3% 0.006 107.1);\n\n    --color-mist-50: oklch(98.7% 0.002 197.1);\n    --color-mist-100: oklch(96.3% 0.002 197.1);\n    --color-mist-200: oklch(92.5% 0.005 214.3);\n    --color-mist-300: oklch(87.2% 0.007 219.6);\n    --color-mist-400: oklch(72.3% 0.014 214.4);\n    --color-mist-500: oklch(56% 0.021 213.5);\n    --color-mist-600: oklch(45% 0.017 213.2);\n    --color-mist-700: oklch(37.8% 0.015 216);\n    --color-mist-800: oklch(27.5% 0.011 216.9);\n    --color-mist-900: oklch(21.8% 0.008 223.9);\n    --color-mist-950: oklch(14.8% 0.004 228.8);\n\n    --color-taupe-50: oklch(98.6% 0.002 67.8);\n    --color-taupe-100: oklch(96% 0.002 17.2);\n    --color-taupe-200: oklch(92.2% 0.005 34.3);\n    --color-taupe-300: oklch(86.8% 0.007 39.5);\n    --color-taupe-400: oklch(71.4% 0.014 41.2);\n    --color-taupe-500: oklch(54.7% 0.021 43.1);\n    --color-taupe-600: oklch(43.8% 0.017 39.3);\n    --color-taupe-700: oklch(36.7% 0.016 35.7);\n    --color-taupe-800: oklch(26.8% 0.011 36.5);\n    --color-taupe-900: oklch(21.4% 0.009 43.1);\n    --color-taupe-950: oklch(14.7% 0.004 49.3);\n\n    --color-black: #000;\n    --color-white: #fff;\n\n    --spacing: 0.25rem;\n\n    --breakpoint-sm: 40rem;\n    --breakpoint-md: 48rem;\n    --breakpoint-lg: 64rem;\n    --breakpoint-xl: 80rem;\n    --breakpoint-2xl: 96rem;\n\n    --container-3xs: 16rem;\n    --container-2xs: 18rem;\n    --container-xs: 20rem;\n    --container-sm: 24rem;\n    --container-md: 28rem;\n    --container-lg: 32rem;\n    --container-xl: 36rem;\n    --container-2xl: 42rem;\n    --container-3xl: 48rem;\n    --container-4xl: 56rem;\n    --container-5xl: 64rem;\n    --container-6xl: 72rem;\n    --container-7xl: 80rem;\n\n    --text-xs: 0.75rem;\n    --text-xs--line-height: calc(1 / 0.75);\n    --text-sm: 0.875rem;\n    --text-sm--line-height: calc(1.25 / 0.875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --text-2xl: 1.5rem;\n    --text-2xl--line-height: calc(2 / 1.5);\n    --text-3xl: 1.875rem;\n    --text-3xl--line-height: calc(2.25 / 1.875);\n    --text-4xl: 2.25rem;\n    --text-4xl--line-height: calc(2.5 / 2.25);\n    --text-5xl: 3rem;\n    --text-5xl--line-height: 1;\n    --text-6xl: 3.75rem;\n    --text-6xl--line-height: 1;\n    --text-7xl: 4.5rem;\n    --text-7xl--line-height: 1;\n    --text-8xl: 6rem;\n    --text-8xl--line-height: 1;\n    --text-9xl: 8rem;\n    --text-9xl--line-height: 1;\n\n    --font-weight-thin: 100;\n    --font-weight-extralight: 200;\n    --font-weight-light: 300;\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --font-weight-bold: 700;\n    --font-weight-extrabold: 800;\n    --font-weight-black: 900;\n\n    --tracking-tighter: -0.05em;\n    --tracking-tight: -0.025em;\n    --tracking-normal: 0em;\n    --tracking-wide: 0.025em;\n    --tracking-wider: 0.05em;\n    --tracking-widest: 0.1em;\n\n    --leading-tight: 1.25;\n    --leading-snug: 1.375;\n    --leading-normal: 1.5;\n    --leading-relaxed: 1.625;\n    --leading-loose: 2;\n\n    --radius-xs: 0.125rem;\n    --radius-sm: 0.25rem;\n    --radius-md: 0.375rem;\n    --radius-lg: 0.5rem;\n    --radius-xl: 0.75rem;\n    --radius-2xl: 1rem;\n    --radius-3xl: 1.5rem;\n    --radius-4xl: 2rem;\n\n    --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);\n    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);\n    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);\n    --shadow-md:\n      0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);\n    --shadow-lg:\n      0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);\n    --shadow-xl:\n      0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\n    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);\n\n    --inset-shadow-2xs: inset 0 1px rgb(0 0 0 / 0.05);\n    --inset-shadow-xs: inset 0 1px 1px rgb(0 0 0 / 0.05);\n    --inset-shadow-sm: inset 0 2px 4px rgb(0 0 0 / 0.05);\n\n    --drop-shadow-xs: 0 1px 1px rgb(0 0 0 / 0.05);\n    --drop-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.15);\n    --drop-shadow-md: 0 3px 3px rgb(0 0 0 / 0.12);\n    --drop-shadow-lg: 0 4px 4px rgb(0 0 0 / 0.15);\n    --drop-shadow-xl: 0 9px 7px rgb(0 0 0 / 0.1);\n    --drop-shadow-2xl: 0 25px 25px rgb(0 0 0 / 0.15);\n\n    --text-shadow-2xs: 0px 1px 0px rgb(0 0 0 / 0.15);\n    --text-shadow-xs: 0px 1px 1px rgb(0 0 0 / 0.2);\n    --text-shadow-sm:\n      0px 1px 0px rgb(0 0 0 / 0.075), 0px 1px 1px rgb(0 0 0 / 0.075),\n      0px 2px 2px rgb(0 0 0 / 0.075);\n    --text-shadow-md:\n      0px 1px 1px rgb(0 0 0 / 0.1), 0px 1px 2px rgb(0 0 0 / 0.1),\n      0px 2px 4px rgb(0 0 0 / 0.1);\n    --text-shadow-lg:\n      0px 1px 2px rgb(0 0 0 / 0.1), 0px 3px 2px rgb(0 0 0 / 0.1),\n      0px 4px 8px rgb(0 0 0 / 0.1);\n\n    --ease-in: cubic-bezier(0.4, 0, 1, 1);\n    --ease-out: cubic-bezier(0, 0, 0.2, 1);\n    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);\n\n    --animate-spin: spin 1s linear infinite;\n    --animate-ping: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;\n    --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;\n    --animate-bounce: bounce 1s infinite;\n\n    @keyframes spin {\n      to {\n        transform: rotate(360deg);\n      }\n    }\n\n    @keyframes ping {\n      75%,\n      100% {\n        transform: scale(2);\n        opacity: 0;\n      }\n    }\n\n    @keyframes pulse {\n      50% {\n        opacity: 0.5;\n      }\n    }\n\n    @keyframes bounce {\n      0%,\n      100% {\n        transform: translateY(-25%);\n        animation-timing-function: cubic-bezier(0.8, 0, 1, 1);\n      }\n\n      50% {\n        transform: none;\n        animation-timing-function: cubic-bezier(0, 0, 0.2, 1);\n      }\n    }\n\n    --blur-xs: 4px;\n    --blur-sm: 8px;\n    --blur-md: 12px;\n    --blur-lg: 16px;\n    --blur-xl: 24px;\n    --blur-2xl: 40px;\n    --blur-3xl: 64px;\n\n    --perspective-dramatic: 100px;\n    --perspective-near: 300px;\n    --perspective-normal: 500px;\n    --perspective-midrange: 800px;\n    --perspective-distant: 1200px;\n\n    --aspect-video: 16 / 9;\n\n    --default-transition-duration: 150ms;\n    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n    --default-font-family: --theme(--font-sans, initial);\n    --default-font-feature-settings: --theme(\n      --font-sans--font-feature-settings,\n      initial\n    );\n    --default-font-variation-settings: --theme(\n      --font-sans--font-variation-settings,\n      initial\n    );\n    --default-mono-font-family: --theme(--font-mono, initial);\n    --default-mono-font-feature-settings: --theme(\n      --font-mono--font-feature-settings,\n      initial\n    );\n    --default-mono-font-variation-settings: --theme(\n      --font-mono--font-variation-settings,\n      initial\n    );\n  }\n\n  /* Deprecated */\n  @theme default inline reference {\n    --blur: 8px;\n    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);\n    --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\n    --drop-shadow: 0 1px 2px rgb(0 0 0 / 0.1), 0 1px 1px rgb(0 0 0 / 0.06);\n    --radius: 0.25rem;\n    --max-width-prose: 65ch;\n  }\n}\n\n@layer base {\n  /*\n  1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\n  2. Remove default margins and padding\n  3. Reset all borders.\n*/\n\n  *,\n  ::after,\n  ::before,\n  ::backdrop,\n  ::file-selector-button {\n    box-sizing: border-box; /* 1 */\n    margin: 0; /* 2 */\n    padding: 0; /* 2 */\n    border: 0 solid; /* 3 */\n  }\n\n  /*\n  1. Use a consistent sensible line-height in all browsers.\n  2. Prevent adjustments of font size after orientation changes in iOS.\n  3. Use a more readable tab size.\n  4. Use the user's configured `sans` font-family by default.\n  5. Use the user's configured `sans` font-feature-settings by default.\n  6. Use the user's configured `sans` font-variation-settings by default.\n  7. Disable tap highlights on iOS.\n*/\n\n  html,\n  :host {\n    line-height: 1.5; /* 1 */\n    -webkit-text-size-adjust: 100%; /* 2 */\n    tab-size: 4; /* 3 */\n    font-family: --theme(\n      --default-font-family,\n      ui-sans-serif,\n      system-ui,\n      sans-serif,\n      \"Apple Color Emoji\",\n      \"Segoe UI Emoji\",\n      \"Segoe UI Symbol\",\n      \"Noto Color Emoji\"\n    ); /* 4 */\n    font-feature-settings: --theme(\n      --default-font-feature-settings,\n      normal\n    ); /* 5 */\n    font-variation-settings: --theme(\n      --default-font-variation-settings,\n      normal\n    ); /* 6 */\n    -webkit-tap-highlight-color: transparent; /* 7 */\n  }\n\n  /*\n  1. Add the correct height in Firefox.\n  2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\n  3. Reset the default border style to a 1px solid border.\n*/\n\n  hr {\n    height: 0; /* 1 */\n    color: inherit; /* 2 */\n    border-top-width: 1px; /* 3 */\n  }\n\n  /*\n  Add the correct text decoration in Chrome, Edge, and Safari.\n*/\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  /*\n  Remove the default font size and weight for headings.\n*/\n\n  h1,\n  h2,\n  h3,\n  h4,\n  h5,\n  h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  /*\n  Reset links to optimize for opt-in styling instead of opt-out.\n*/\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  /*\n  Add the correct font weight in Edge and Safari.\n*/\n\n  b,\n  strong {\n    font-weight: bolder;\n  }\n\n  /*\n  1. Use the user's configured `mono` font-family by default.\n  2. Use the user's configured `mono` font-feature-settings by default.\n  3. Use the user's configured `mono` font-variation-settings by default.\n  4. Correct the odd `em` font sizing in all browsers.\n*/\n\n  code,\n  kbd,\n  samp,\n  pre {\n    font-family: --theme(\n      --default-mono-font-family,\n      ui-monospace,\n      SFMono-Regular,\n      Menlo,\n      Monaco,\n      Consolas,\n      \"Liberation Mono\",\n      \"Courier New\",\n      monospace\n    ); /* 1 */\n    font-feature-settings: --theme(\n      --default-mono-font-feature-settings,\n      normal\n    ); /* 2 */\n    font-variation-settings: --theme(\n      --default-mono-font-variation-settings,\n      normal\n    ); /* 3 */\n    font-size: 1em; /* 4 */\n  }\n\n  /*\n  Add the correct font size in all browsers.\n*/\n\n  small {\n    font-size: 80%;\n  }\n\n  /*\n  Prevent `sub` and `sup` elements from affecting the line height in all browsers.\n*/\n\n  sub,\n  sup {\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n    vertical-align: baseline;\n  }\n\n  sub {\n    bottom: -0.25em;\n  }\n\n  sup {\n    top: -0.5em;\n  }\n\n  /*\n  1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\n  2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\n  3. Remove gaps between table borders by default.\n*/\n\n  table {\n    text-indent: 0; /* 1 */\n    border-color: inherit; /* 2 */\n    border-collapse: collapse; /* 3 */\n  }\n\n  /*\n  Use the modern Firefox focus style for all focusable elements.\n*/\n\n  :-moz-focusring {\n    outline: auto;\n  }\n\n  /*\n  Add the correct vertical alignment in Chrome and Firefox.\n*/\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  /*\n  Add the correct display in Chrome and Safari.\n*/\n\n  summary {\n    display: list-item;\n  }\n\n  /*\n  Make lists unstyled by default.\n*/\n\n  ol,\n  ul,\n  menu {\n    list-style: none;\n  }\n\n  /*\n  1. Make replaced elements `display: block` by default. (https://github.com/mozdevs/cssremedy/issues/14)\n  2. Add `vertical-align: middle` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\n      This can trigger a poorly considered lint error in some tools but is included by design.\n*/\n\n  img,\n  svg,\n  video,\n  canvas,\n  audio,\n  iframe,\n  embed,\n  object {\n    display: block; /* 1 */\n    vertical-align: middle; /* 2 */\n  }\n\n  /*\n  Constrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\n*/\n\n  img,\n  video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  /*\n  1. Inherit font styles in all browsers.\n  2. Remove border radius in all browsers.\n  3. Remove background color in all browsers.\n  4. Ensure consistent opacity for disabled states in all browsers.\n*/\n\n  button,\n  input,\n  select,\n  optgroup,\n  textarea,\n  ::file-selector-button {\n    font: inherit; /* 1 */\n    font-feature-settings: inherit; /* 1 */\n    font-variation-settings: inherit; /* 1 */\n    letter-spacing: inherit; /* 1 */\n    color: inherit; /* 1 */\n    border-radius: 0; /* 2 */\n    background-color: transparent; /* 3 */\n    opacity: 1; /* 4 */\n  }\n\n  /*\n  Restore default font weight.\n*/\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  /*\n  Restore indentation.\n*/\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  /*\n  Restore space after button.\n*/\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  /*\n  Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\n*/\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  /*\n  Set the default placeholder color to a semi-transparent version of the current text color in browsers that do not\n  crash when using `color-mix(…)` with `currentcolor`. (https://github.com/tailwindlabs/tailwindcss/issues/17194)\n*/\n\n  @supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or\n    (contain-intrinsic-size: 1px) /* Safari 17+ */ {\n    ::placeholder {\n      color: color-mix(in oklab, currentcolor 50%, transparent);\n    }\n  }\n\n  /*\n  Prevent resizing textareas horizontally by default.\n*/\n\n  textarea {\n    resize: vertical;\n  }\n\n  /*\n  Remove the inner padding in Chrome and Safari on macOS.\n*/\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  /*\n  1. Ensure date/time inputs have the same height when empty in iOS Safari.\n  2. Ensure text alignment can be changed on date/time inputs in iOS Safari.\n*/\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh; /* 1 */\n    text-align: inherit; /* 2 */\n  }\n\n  /*\n  Prevent height from changing on date/time inputs in macOS Safari when the input is set to `display: block`.\n*/\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  /*\n  Remove excess padding from pseudo-elements in date/time inputs to ensure consistent height across browsers.\n*/\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit,\n  ::-webkit-datetime-edit-year-field,\n  ::-webkit-datetime-edit-month-field,\n  ::-webkit-datetime-edit-day-field,\n  ::-webkit-datetime-edit-hour-field,\n  ::-webkit-datetime-edit-minute-field,\n  ::-webkit-datetime-edit-second-field,\n  ::-webkit-datetime-edit-millisecond-field,\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  /*\n  Center dropdown marker shown on inputs with paired `<datalist>`s in Chrome. (https://github.com/tailwindlabs/tailwindcss/issues/18499)\n*/\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  /*\n  Remove the additional `:invalid` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\n*/\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  /*\n  Correct the inability to style the border radius in iOS Safari.\n*/\n\n  button,\n  input:where([type=\"button\"], [type=\"reset\"], [type=\"submit\"]),\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  /*\n  Correct the cursor style of increment and decrement buttons in Safari.\n*/\n\n  ::-webkit-inner-spin-button,\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  /*\n  Make elements with the HTML hidden attribute stay hidden by default.\n*/\n\n  [hidden]:where(:not([hidden=\"until-found\"])) {\n    display: none !important;\n  }\n}\n\n@layer utilities {\n  @tailwind utilities;\n}\n","@import \"tailwindcss\";\n\n@source \"./\";\n@source \"../../word/src\";\n@source \"../../excel/src\";\n@source \"../../powerpoint/src\";\n\n@theme inline {\n  --color-background: var(--background);\n  --color-foreground: var(--foreground);\n  --color-border: var(--border);\n  --color-input: var(--input);\n  --color-ring: var(--ring);\n  --color-primary: var(--primary);\n  --color-primary-foreground: var(--primary-foreground);\n  --color-secondary: var(--secondary);\n  --color-secondary-foreground: var(--secondary-foreground);\n  --color-muted: var(--muted);\n  --color-muted-foreground: var(--muted-foreground);\n  --color-accent: var(--accent);\n  --color-accent-foreground: var(--accent-foreground);\n  --color-destructive: var(--destructive);\n  --color-card: var(--card);\n  --color-card-foreground: var(--card-foreground);\n  --font-sans: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n  --radius-sm: calc(var(--radius) * 0.6);\n  --radius-md: calc(var(--radius) * 0.8);\n  --radius-lg: var(--radius);\n  --radius-xl: calc(var(--radius) * 1.4);\n  --radius-2xl: calc(var(--radius) * 1.8);\n}\n\n:root {\n  --background: oklch(1 0 0);\n  --foreground: oklch(0.145 0.008 326);\n  --card: oklch(1 0 0);\n  --card-foreground: oklch(0.145 0.008 326);\n  --primary: oklch(0.511 0.096 186.391);\n  --primary-foreground: oklch(0.984 0.014 180.72);\n  --secondary: oklch(0.967 0.001 286.375);\n  --secondary-foreground: oklch(0.21 0.006 285.885);\n  --muted: oklch(0.96 0.003 325.6);\n  --muted-foreground: oklch(0.542 0.034 322.5);\n  --accent: oklch(0.96 0.003 325.6);\n  --accent-foreground: oklch(0.212 0.019 322.12);\n  --destructive: oklch(0.577 0.245 27.325);\n  --border: oklch(0.922 0.005 325.62);\n  --input: oklch(0.922 0.005 325.62);\n  --ring: oklch(0.711 0.019 323.02);\n  --radius: 0.625rem;\n}\n\n@layer base {\n  * {\n    border-color: var(--border);\n  }\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n    font-family: var(--font-sans);\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    margin: 0;\n    padding: 0;\n  }\n}\n"],"sourceRoot":""}]);
+___CSS_LOADER_EXPORT___.push([module.id, "/*! tailwindcss v4.2.2 | MIT License | https://tailwindcss.com */\n@layer properties;\n@layer theme, base, components, utilities;\n@layer theme {\n  :root, :host {\n    --font-sans: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\",\n      \"Courier New\", monospace;\n    --spacing: 0.25rem;\n    --text-xs: 0.75rem;\n    --text-xs--line-height: calc(1 / 0.75);\n    --text-sm: 0.875rem;\n    --text-sm--line-height: calc(1.25 / 0.875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --leading-relaxed: 1.625;\n    --animate-spin: spin 1s linear infinite;\n    --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;\n    --default-transition-duration: 150ms;\n    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n    --default-font-family: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n    --default-mono-font-family: var(--font-mono);\n  }\n}\n@layer base {\n  *, ::after, ::before, ::backdrop, ::file-selector-button {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n    border: 0 solid;\n  }\n  html, :host {\n    line-height: 1.5;\n    -webkit-text-size-adjust: 100%;\n    tab-size: 4;\n    font-family: var(--default-font-family, ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\");\n    font-feature-settings: var(--default-font-feature-settings, normal);\n    font-variation-settings: var(--default-font-variation-settings, normal);\n    -webkit-tap-highlight-color: transparent;\n  }\n  hr {\n    height: 0;\n    color: inherit;\n    border-top-width: 1px;\n  }\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n  h1, h2, h3, h4, h5, h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n  b, strong {\n    font-weight: bolder;\n  }\n  code, kbd, samp, pre {\n    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace);\n    font-feature-settings: var(--default-mono-font-feature-settings, normal);\n    font-variation-settings: var(--default-mono-font-variation-settings, normal);\n    font-size: 1em;\n  }\n  small {\n    font-size: 80%;\n  }\n  sub, sup {\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n    vertical-align: baseline;\n  }\n  sub {\n    bottom: -0.25em;\n  }\n  sup {\n    top: -0.5em;\n  }\n  table {\n    text-indent: 0;\n    border-color: inherit;\n    border-collapse: collapse;\n  }\n  :-moz-focusring {\n    outline: auto;\n  }\n  progress {\n    vertical-align: baseline;\n  }\n  summary {\n    display: list-item;\n  }\n  ol, ul, menu {\n    list-style: none;\n  }\n  img, svg, video, canvas, audio, iframe, embed, object {\n    display: block;\n    vertical-align: middle;\n  }\n  img, video {\n    max-width: 100%;\n    height: auto;\n  }\n  button, input, select, optgroup, textarea, ::file-selector-button {\n    font: inherit;\n    font-feature-settings: inherit;\n    font-variation-settings: inherit;\n    letter-spacing: inherit;\n    color: inherit;\n    border-radius: 0;\n    background-color: transparent;\n    opacity: 1;\n  }\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n  ::placeholder {\n    opacity: 1;\n  }\n  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px) {\n    ::placeholder {\n      color: currentcolor;\n      @supports (color: color-mix(in lab, red, red)) {\n        color: color-mix(in oklab, currentcolor 50%, transparent);\n      }\n    }\n  }\n  textarea {\n    resize: vertical;\n  }\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n  ::-webkit-date-and-time-value {\n    min-height: 1lh;\n    text-align: inherit;\n  }\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n  ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n  button, input:where([type=\"button\"], [type=\"reset\"], [type=\"submit\"]), ::file-selector-button {\n    appearance: button;\n  }\n  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button {\n    height: auto;\n  }\n  [hidden]:where(:not([hidden=\"until-found\"])) {\n    display: none !important;\n  }\n}\n@layer utilities {\n  .visible {\n    visibility: visible;\n  }\n  .absolute {\n    position: absolute;\n  }\n  .relative {\n    position: relative;\n  }\n  .inset-0 {\n    inset: calc(var(--spacing) * 0);\n  }\n  .start {\n    inset-inline-start: var(--spacing);\n  }\n  .end {\n    inset-inline-end: var(--spacing);\n  }\n  .container {\n    width: 100%;\n    @media (width >= 40rem) {\n      max-width: 40rem;\n    }\n    @media (width >= 48rem) {\n      max-width: 48rem;\n    }\n    @media (width >= 64rem) {\n      max-width: 64rem;\n    }\n    @media (width >= 80rem) {\n      max-width: 80rem;\n    }\n    @media (width >= 96rem) {\n      max-width: 96rem;\n    }\n  }\n  .mt-1 {\n    margin-top: calc(var(--spacing) * 1);\n  }\n  .mt-2 {\n    margin-top: calc(var(--spacing) * 2);\n  }\n  .mb-0\\.5 {\n    margin-bottom: calc(var(--spacing) * 0.5);\n  }\n  .mb-2 {\n    margin-bottom: calc(var(--spacing) * 2);\n  }\n  .mb-3 {\n    margin-bottom: calc(var(--spacing) * 3);\n  }\n  .mb-6 {\n    margin-bottom: calc(var(--spacing) * 6);\n  }\n  .ml-4 {\n    margin-left: calc(var(--spacing) * 4);\n  }\n  .block {\n    display: block;\n  }\n  .flex {\n    display: flex;\n  }\n  .inline {\n    display: inline;\n  }\n  .inline-flex {\n    display: inline-flex;\n  }\n  .table {\n    display: table;\n  }\n  .h-2 {\n    height: calc(var(--spacing) * 2);\n  }\n  .h-3 {\n    height: calc(var(--spacing) * 3);\n  }\n  .h-3\\.5 {\n    height: calc(var(--spacing) * 3.5);\n  }\n  .h-7 {\n    height: calc(var(--spacing) * 7);\n  }\n  .h-full {\n    height: 100%;\n  }\n  .h-screen {\n    height: 100vh;\n  }\n  .max-h-\\[200px\\] {\n    max-height: 200px;\n  }\n  .min-h-\\[56px\\] {\n    min-height: 56px;\n  }\n  .w-2 {\n    width: calc(var(--spacing) * 2);\n  }\n  .w-3 {\n    width: calc(var(--spacing) * 3);\n  }\n  .w-3\\.5 {\n    width: calc(var(--spacing) * 3.5);\n  }\n  .w-7 {\n    width: calc(var(--spacing) * 7);\n  }\n  .w-full {\n    width: 100%;\n  }\n  .max-w-\\[200px\\] {\n    max-width: 200px;\n  }\n  .max-w-\\[240px\\] {\n    max-width: 240px;\n  }\n  .max-w-none {\n    max-width: none;\n  }\n  .min-w-0 {\n    min-width: calc(var(--spacing) * 0);\n  }\n  .flex-1 {\n    flex: 1;\n  }\n  .shrink-0 {\n    flex-shrink: 0;\n  }\n  .animate-pulse {\n    animation: var(--animate-pulse);\n  }\n  .animate-spin {\n    animation: var(--animate-spin);\n  }\n  .resize-none {\n    resize: none;\n  }\n  .list-decimal {\n    list-style-type: decimal;\n  }\n  .list-disc {\n    list-style-type: disc;\n  }\n  .flex-col {\n    flex-direction: column;\n  }\n  .flex-wrap {\n    flex-wrap: wrap;\n  }\n  .items-center {\n    align-items: center;\n  }\n  .items-start {\n    align-items: flex-start;\n  }\n  .justify-between {\n    justify-content: space-between;\n  }\n  .justify-center {\n    justify-content: center;\n  }\n  .gap-1 {\n    gap: calc(var(--spacing) * 1);\n  }\n  .gap-1\\.5 {\n    gap: calc(var(--spacing) * 1.5);\n  }\n  .gap-3 {\n    gap: calc(var(--spacing) * 3);\n  }\n  .truncate {\n    overflow: hidden;\n    text-overflow: ellipsis;\n    white-space: nowrap;\n  }\n  .overflow-hidden {\n    overflow: hidden;\n  }\n  .overflow-x-auto {\n    overflow-x: auto;\n  }\n  .overflow-y-auto {\n    overflow-y: auto;\n  }\n  .rounded {\n    border-radius: 0.25rem;\n  }\n  .rounded-full {\n    border-radius: calc(infinity * 1px);\n  }\n  .rounded-lg {\n    border-radius: var(--radius);\n  }\n  .rounded-md {\n    border-radius: calc(var(--radius) * 0.8);\n  }\n  .rounded-sm {\n    border-radius: calc(var(--radius) * 0.6);\n  }\n  .rounded-t-lg {\n    border-top-left-radius: var(--radius);\n    border-top-right-radius: var(--radius);\n  }\n  .rounded-b-lg {\n    border-bottom-right-radius: var(--radius);\n    border-bottom-left-radius: var(--radius);\n  }\n  .border {\n    border-style: var(--tw-border-style);\n    border-width: 1px;\n  }\n  .border-t {\n    border-top-style: var(--tw-border-style);\n    border-top-width: 1px;\n  }\n  .border-b {\n    border-bottom-style: var(--tw-border-style);\n    border-bottom-width: 1px;\n  }\n  .border-border\\/50 {\n    border-color: var(--border);\n    @supports (color: color-mix(in lab, red, red)) {\n      border-color: color-mix(in oklab, var(--border) 50%, transparent);\n    }\n  }\n  .border-input {\n    border-color: var(--input);\n  }\n  .bg-accent-foreground {\n    background-color: var(--accent-foreground);\n  }\n  .bg-background {\n    background-color: var(--background);\n  }\n  .bg-muted {\n    background-color: var(--muted);\n  }\n  .bg-primary {\n    background-color: var(--primary);\n  }\n  .p-3 {\n    padding: calc(var(--spacing) * 3);\n  }\n  .p-8 {\n    padding: calc(var(--spacing) * 8);\n  }\n  .px-1 {\n    padding-inline: calc(var(--spacing) * 1);\n  }\n  .px-2 {\n    padding-inline: calc(var(--spacing) * 2);\n  }\n  .px-3 {\n    padding-inline: calc(var(--spacing) * 3);\n  }\n  .px-4 {\n    padding-inline: calc(var(--spacing) * 4);\n  }\n  .py-0\\.5 {\n    padding-block: calc(var(--spacing) * 0.5);\n  }\n  .py-1 {\n    padding-block: calc(var(--spacing) * 1);\n  }\n  .py-1\\.5 {\n    padding-block: calc(var(--spacing) * 1.5);\n  }\n  .py-2\\.5 {\n    padding-block: calc(var(--spacing) * 2.5);\n  }\n  .py-3 {\n    padding-block: calc(var(--spacing) * 3);\n  }\n  .pt-\\[9px\\] {\n    padding-top: 9px;\n  }\n  .pb-0 {\n    padding-bottom: calc(var(--spacing) * 0);\n  }\n  .text-center {\n    text-align: center;\n  }\n  .font-mono {\n    font-family: var(--font-mono);\n  }\n  .font-sans {\n    font-family: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n  }\n  .text-base {\n    font-size: var(--text-base);\n    line-height: var(--tw-leading, var(--text-base--line-height));\n  }\n  .text-sm {\n    font-size: var(--text-sm);\n    line-height: var(--tw-leading, var(--text-sm--line-height));\n  }\n  .text-xs {\n    font-size: var(--text-xs);\n    line-height: var(--tw-leading, var(--text-xs--line-height));\n  }\n  .text-\\[11px\\] {\n    font-size: 11px;\n  }\n  .leading-relaxed {\n    --tw-leading: var(--leading-relaxed);\n    line-height: var(--leading-relaxed);\n  }\n  .font-medium {\n    --tw-font-weight: var(--font-weight-medium);\n    font-weight: var(--font-weight-medium);\n  }\n  .font-semibold {\n    --tw-font-weight: var(--font-weight-semibold);\n    font-weight: var(--font-weight-semibold);\n  }\n  .break-words {\n    overflow-wrap: break-word;\n  }\n  .text-destructive {\n    color: var(--destructive);\n  }\n  .text-foreground {\n    color: var(--foreground);\n  }\n  .text-muted-foreground {\n    color: var(--muted-foreground);\n  }\n  .text-muted-foreground\\/40 {\n    color: var(--muted-foreground);\n    @supports (color: color-mix(in lab, red, red)) {\n      color: color-mix(in oklab, var(--muted-foreground) 40%, transparent);\n    }\n  }\n  .text-primary {\n    color: var(--primary);\n  }\n  .italic {\n    font-style: italic;\n  }\n  .underline {\n    text-decoration-line: underline;\n  }\n  .placeholder-muted-foreground {\n    &::placeholder {\n      color: var(--muted-foreground);\n    }\n  }\n  .opacity-25 {\n    opacity: 25%;\n  }\n  .opacity-75 {\n    opacity: 75%;\n  }\n  .shadow-xs {\n    --tw-shadow: 0 1px 2px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));\n    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n  }\n  .transition-colors {\n    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;\n    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));\n    transition-duration: var(--tw-duration, var(--default-transition-duration));\n  }\n  .outline-none {\n    --tw-outline-style: none;\n    outline-style: none;\n  }\n  .last\\:mb-0 {\n    &:last-child {\n      margin-bottom: calc(var(--spacing) * 0);\n    }\n  }\n  .focus-within\\:border-ring {\n    &:focus-within {\n      border-color: var(--ring);\n    }\n  }\n  .focus-within\\:ring-2 {\n    &:focus-within {\n      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);\n      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);\n    }\n  }\n  .focus-within\\:ring-ring\\/50 {\n    &:focus-within {\n      --tw-ring-color: var(--ring);\n      @supports (color: color-mix(in lab, red, red)) {\n        --tw-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);\n      }\n    }\n  }\n  .hover\\:bg-accent {\n    &:hover {\n      @media (hover: hover) {\n        background-color: var(--accent);\n      }\n    }\n  }\n  .hover\\:bg-destructive\\/10 {\n    &:hover {\n      @media (hover: hover) {\n        background-color: var(--destructive);\n        @supports (color: color-mix(in lab, red, red)) {\n          background-color: color-mix(in oklab, var(--destructive) 10%, transparent);\n        }\n      }\n    }\n  }\n  .hover\\:bg-muted\\/70 {\n    &:hover {\n      @media (hover: hover) {\n        background-color: var(--muted);\n        @supports (color: color-mix(in lab, red, red)) {\n          background-color: color-mix(in oklab, var(--muted) 70%, transparent);\n        }\n      }\n    }\n  }\n  .hover\\:text-foreground {\n    &:hover {\n      @media (hover: hover) {\n        color: var(--foreground);\n      }\n    }\n  }\n  .disabled\\:opacity-30 {\n    &:disabled {\n      opacity: 30%;\n    }\n  }\n}\n:root {\n  --background: oklch(1 0 0);\n  --foreground: oklch(0.145 0.008 326);\n  --card: oklch(1 0 0);\n  --card-foreground: oklch(0.145 0.008 326);\n  --primary: oklch(0.511 0.096 186.391);\n  --primary-foreground: oklch(0.984 0.014 180.72);\n  --secondary: oklch(0.967 0.001 286.375);\n  --secondary-foreground: oklch(0.21 0.006 285.885);\n  --muted: oklch(0.96 0.003 325.6);\n  --muted-foreground: oklch(0.542 0.034 322.5);\n  --accent: oklch(0.96 0.003 325.6);\n  --accent-foreground: oklch(0.212 0.019 322.12);\n  --destructive: oklch(0.577 0.245 27.325);\n  --border: oklch(0.922 0.005 325.62);\n  --input: oklch(0.922 0.005 325.62);\n  --ring: oklch(0.711 0.019 323.02);\n  --radius: 0.625rem;\n}\n@layer base {\n  * {\n    border-color: var(--border);\n  }\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n    font-family: var(--font-sans);\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    margin: 0;\n    padding: 0;\n  }\n}\n@property --tw-border-style {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: solid;\n}\n@property --tw-leading {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-font-weight {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-shadow-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-shadow-alpha {\n  syntax: \"<percentage>\";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-inset-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-shadow-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-inset-shadow-alpha {\n  syntax: \"<percentage>\";\n  inherits: false;\n  initial-value: 100%;\n}\n@property --tw-ring-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-ring-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-inset-ring-color {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-inset-ring-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@property --tw-ring-inset {\n  syntax: \"*\";\n  inherits: false;\n}\n@property --tw-ring-offset-width {\n  syntax: \"<length>\";\n  inherits: false;\n  initial-value: 0px;\n}\n@property --tw-ring-offset-color {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: #fff;\n}\n@property --tw-ring-offset-shadow {\n  syntax: \"*\";\n  inherits: false;\n  initial-value: 0 0 #0000;\n}\n@keyframes spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n@keyframes pulse {\n  50% {\n    opacity: 0.5;\n  }\n}\n@layer properties {\n  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {\n    *, ::before, ::after, ::backdrop {\n      --tw-border-style: solid;\n      --tw-leading: initial;\n      --tw-font-weight: initial;\n      --tw-shadow: 0 0 #0000;\n      --tw-shadow-color: initial;\n      --tw-shadow-alpha: 100%;\n      --tw-inset-shadow: 0 0 #0000;\n      --tw-inset-shadow-color: initial;\n      --tw-inset-shadow-alpha: 100%;\n      --tw-ring-color: initial;\n      --tw-ring-shadow: 0 0 #0000;\n      --tw-inset-ring-color: initial;\n      --tw-inset-ring-shadow: 0 0 #0000;\n      --tw-ring-inset: initial;\n      --tw-ring-offset-width: 0px;\n      --tw-ring-offset-color: #fff;\n      --tw-ring-offset-shadow: 0 0 #0000;\n    }\n  }\n}\n", "",{"version":3,"sources":["<no source>","webpack://./../node_modules/tailwindcss/index.css","webpack://./../shared/src/styles.css"],"names":[],"mappings":"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","sourcesContent":[null,"@layer theme, base, components, utilities;\n\n@layer theme {\n  @theme default {\n    --font-sans:\n      ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\";\n    --font-serif: ui-serif, Georgia, Cambria, \"Times New Roman\", Times, serif;\n    --font-mono:\n      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\",\n      \"Courier New\", monospace;\n\n    --color-red-50: oklch(97.1% 0.013 17.38);\n    --color-red-100: oklch(93.6% 0.032 17.717);\n    --color-red-200: oklch(88.5% 0.062 18.334);\n    --color-red-300: oklch(80.8% 0.114 19.571);\n    --color-red-400: oklch(70.4% 0.191 22.216);\n    --color-red-500: oklch(63.7% 0.237 25.331);\n    --color-red-600: oklch(57.7% 0.245 27.325);\n    --color-red-700: oklch(50.5% 0.213 27.518);\n    --color-red-800: oklch(44.4% 0.177 26.899);\n    --color-red-900: oklch(39.6% 0.141 25.723);\n    --color-red-950: oklch(25.8% 0.092 26.042);\n\n    --color-orange-50: oklch(98% 0.016 73.684);\n    --color-orange-100: oklch(95.4% 0.038 75.164);\n    --color-orange-200: oklch(90.1% 0.076 70.697);\n    --color-orange-300: oklch(83.7% 0.128 66.29);\n    --color-orange-400: oklch(75% 0.183 55.934);\n    --color-orange-500: oklch(70.5% 0.213 47.604);\n    --color-orange-600: oklch(64.6% 0.222 41.116);\n    --color-orange-700: oklch(55.3% 0.195 38.402);\n    --color-orange-800: oklch(47% 0.157 37.304);\n    --color-orange-900: oklch(40.8% 0.123 38.172);\n    --color-orange-950: oklch(26.6% 0.079 36.259);\n\n    --color-amber-50: oklch(98.7% 0.022 95.277);\n    --color-amber-100: oklch(96.2% 0.059 95.617);\n    --color-amber-200: oklch(92.4% 0.12 95.746);\n    --color-amber-300: oklch(87.9% 0.169 91.605);\n    --color-amber-400: oklch(82.8% 0.189 84.429);\n    --color-amber-500: oklch(76.9% 0.188 70.08);\n    --color-amber-600: oklch(66.6% 0.179 58.318);\n    --color-amber-700: oklch(55.5% 0.163 48.998);\n    --color-amber-800: oklch(47.3% 0.137 46.201);\n    --color-amber-900: oklch(41.4% 0.112 45.904);\n    --color-amber-950: oklch(27.9% 0.077 45.635);\n\n    --color-yellow-50: oklch(98.7% 0.026 102.212);\n    --color-yellow-100: oklch(97.3% 0.071 103.193);\n    --color-yellow-200: oklch(94.5% 0.129 101.54);\n    --color-yellow-300: oklch(90.5% 0.182 98.111);\n    --color-yellow-400: oklch(85.2% 0.199 91.936);\n    --color-yellow-500: oklch(79.5% 0.184 86.047);\n    --color-yellow-600: oklch(68.1% 0.162 75.834);\n    --color-yellow-700: oklch(55.4% 0.135 66.442);\n    --color-yellow-800: oklch(47.6% 0.114 61.907);\n    --color-yellow-900: oklch(42.1% 0.095 57.708);\n    --color-yellow-950: oklch(28.6% 0.066 53.813);\n\n    --color-lime-50: oklch(98.6% 0.031 120.757);\n    --color-lime-100: oklch(96.7% 0.067 122.328);\n    --color-lime-200: oklch(93.8% 0.127 124.321);\n    --color-lime-300: oklch(89.7% 0.196 126.665);\n    --color-lime-400: oklch(84.1% 0.238 128.85);\n    --color-lime-500: oklch(76.8% 0.233 130.85);\n    --color-lime-600: oklch(64.8% 0.2 131.684);\n    --color-lime-700: oklch(53.2% 0.157 131.589);\n    --color-lime-800: oklch(45.3% 0.124 130.933);\n    --color-lime-900: oklch(40.5% 0.101 131.063);\n    --color-lime-950: oklch(27.4% 0.072 132.109);\n\n    --color-green-50: oklch(98.2% 0.018 155.826);\n    --color-green-100: oklch(96.2% 0.044 156.743);\n    --color-green-200: oklch(92.5% 0.084 155.995);\n    --color-green-300: oklch(87.1% 0.15 154.449);\n    --color-green-400: oklch(79.2% 0.209 151.711);\n    --color-green-500: oklch(72.3% 0.219 149.579);\n    --color-green-600: oklch(62.7% 0.194 149.214);\n    --color-green-700: oklch(52.7% 0.154 150.069);\n    --color-green-800: oklch(44.8% 0.119 151.328);\n    --color-green-900: oklch(39.3% 0.095 152.535);\n    --color-green-950: oklch(26.6% 0.065 152.934);\n\n    --color-emerald-50: oklch(97.9% 0.021 166.113);\n    --color-emerald-100: oklch(95% 0.052 163.051);\n    --color-emerald-200: oklch(90.5% 0.093 164.15);\n    --color-emerald-300: oklch(84.5% 0.143 164.978);\n    --color-emerald-400: oklch(76.5% 0.177 163.223);\n    --color-emerald-500: oklch(69.6% 0.17 162.48);\n    --color-emerald-600: oklch(59.6% 0.145 163.225);\n    --color-emerald-700: oklch(50.8% 0.118 165.612);\n    --color-emerald-800: oklch(43.2% 0.095 166.913);\n    --color-emerald-900: oklch(37.8% 0.077 168.94);\n    --color-emerald-950: oklch(26.2% 0.051 172.552);\n\n    --color-teal-50: oklch(98.4% 0.014 180.72);\n    --color-teal-100: oklch(95.3% 0.051 180.801);\n    --color-teal-200: oklch(91% 0.096 180.426);\n    --color-teal-300: oklch(85.5% 0.138 181.071);\n    --color-teal-400: oklch(77.7% 0.152 181.912);\n    --color-teal-500: oklch(70.4% 0.14 182.503);\n    --color-teal-600: oklch(60% 0.118 184.704);\n    --color-teal-700: oklch(51.1% 0.096 186.391);\n    --color-teal-800: oklch(43.7% 0.078 188.216);\n    --color-teal-900: oklch(38.6% 0.063 188.416);\n    --color-teal-950: oklch(27.7% 0.046 192.524);\n\n    --color-cyan-50: oklch(98.4% 0.019 200.873);\n    --color-cyan-100: oklch(95.6% 0.045 203.388);\n    --color-cyan-200: oklch(91.7% 0.08 205.041);\n    --color-cyan-300: oklch(86.5% 0.127 207.078);\n    --color-cyan-400: oklch(78.9% 0.154 211.53);\n    --color-cyan-500: oklch(71.5% 0.143 215.221);\n    --color-cyan-600: oklch(60.9% 0.126 221.723);\n    --color-cyan-700: oklch(52% 0.105 223.128);\n    --color-cyan-800: oklch(45% 0.085 224.283);\n    --color-cyan-900: oklch(39.8% 0.07 227.392);\n    --color-cyan-950: oklch(30.2% 0.056 229.695);\n\n    --color-sky-50: oklch(97.7% 0.013 236.62);\n    --color-sky-100: oklch(95.1% 0.026 236.824);\n    --color-sky-200: oklch(90.1% 0.058 230.902);\n    --color-sky-300: oklch(82.8% 0.111 230.318);\n    --color-sky-400: oklch(74.6% 0.16 232.661);\n    --color-sky-500: oklch(68.5% 0.169 237.323);\n    --color-sky-600: oklch(58.8% 0.158 241.966);\n    --color-sky-700: oklch(50% 0.134 242.749);\n    --color-sky-800: oklch(44.3% 0.11 240.79);\n    --color-sky-900: oklch(39.1% 0.09 240.876);\n    --color-sky-950: oklch(29.3% 0.066 243.157);\n\n    --color-blue-50: oklch(97% 0.014 254.604);\n    --color-blue-100: oklch(93.2% 0.032 255.585);\n    --color-blue-200: oklch(88.2% 0.059 254.128);\n    --color-blue-300: oklch(80.9% 0.105 251.813);\n    --color-blue-400: oklch(70.7% 0.165 254.624);\n    --color-blue-500: oklch(62.3% 0.214 259.815);\n    --color-blue-600: oklch(54.6% 0.245 262.881);\n    --color-blue-700: oklch(48.8% 0.243 264.376);\n    --color-blue-800: oklch(42.4% 0.199 265.638);\n    --color-blue-900: oklch(37.9% 0.146 265.522);\n    --color-blue-950: oklch(28.2% 0.091 267.935);\n\n    --color-indigo-50: oklch(96.2% 0.018 272.314);\n    --color-indigo-100: oklch(93% 0.034 272.788);\n    --color-indigo-200: oklch(87% 0.065 274.039);\n    --color-indigo-300: oklch(78.5% 0.115 274.713);\n    --color-indigo-400: oklch(67.3% 0.182 276.935);\n    --color-indigo-500: oklch(58.5% 0.233 277.117);\n    --color-indigo-600: oklch(51.1% 0.262 276.966);\n    --color-indigo-700: oklch(45.7% 0.24 277.023);\n    --color-indigo-800: oklch(39.8% 0.195 277.366);\n    --color-indigo-900: oklch(35.9% 0.144 278.697);\n    --color-indigo-950: oklch(25.7% 0.09 281.288);\n\n    --color-violet-50: oklch(96.9% 0.016 293.756);\n    --color-violet-100: oklch(94.3% 0.029 294.588);\n    --color-violet-200: oklch(89.4% 0.057 293.283);\n    --color-violet-300: oklch(81.1% 0.111 293.571);\n    --color-violet-400: oklch(70.2% 0.183 293.541);\n    --color-violet-500: oklch(60.6% 0.25 292.717);\n    --color-violet-600: oklch(54.1% 0.281 293.009);\n    --color-violet-700: oklch(49.1% 0.27 292.581);\n    --color-violet-800: oklch(43.2% 0.232 292.759);\n    --color-violet-900: oklch(38% 0.189 293.745);\n    --color-violet-950: oklch(28.3% 0.141 291.089);\n\n    --color-purple-50: oklch(97.7% 0.014 308.299);\n    --color-purple-100: oklch(94.6% 0.033 307.174);\n    --color-purple-200: oklch(90.2% 0.063 306.703);\n    --color-purple-300: oklch(82.7% 0.119 306.383);\n    --color-purple-400: oklch(71.4% 0.203 305.504);\n    --color-purple-500: oklch(62.7% 0.265 303.9);\n    --color-purple-600: oklch(55.8% 0.288 302.321);\n    --color-purple-700: oklch(49.6% 0.265 301.924);\n    --color-purple-800: oklch(43.8% 0.218 303.724);\n    --color-purple-900: oklch(38.1% 0.176 304.987);\n    --color-purple-950: oklch(29.1% 0.149 302.717);\n\n    --color-fuchsia-50: oklch(97.7% 0.017 320.058);\n    --color-fuchsia-100: oklch(95.2% 0.037 318.852);\n    --color-fuchsia-200: oklch(90.3% 0.076 319.62);\n    --color-fuchsia-300: oklch(83.3% 0.145 321.434);\n    --color-fuchsia-400: oklch(74% 0.238 322.16);\n    --color-fuchsia-500: oklch(66.7% 0.295 322.15);\n    --color-fuchsia-600: oklch(59.1% 0.293 322.896);\n    --color-fuchsia-700: oklch(51.8% 0.253 323.949);\n    --color-fuchsia-800: oklch(45.2% 0.211 324.591);\n    --color-fuchsia-900: oklch(40.1% 0.17 325.612);\n    --color-fuchsia-950: oklch(29.3% 0.136 325.661);\n\n    --color-pink-50: oklch(97.1% 0.014 343.198);\n    --color-pink-100: oklch(94.8% 0.028 342.258);\n    --color-pink-200: oklch(89.9% 0.061 343.231);\n    --color-pink-300: oklch(82.3% 0.12 346.018);\n    --color-pink-400: oklch(71.8% 0.202 349.761);\n    --color-pink-500: oklch(65.6% 0.241 354.308);\n    --color-pink-600: oklch(59.2% 0.249 0.584);\n    --color-pink-700: oklch(52.5% 0.223 3.958);\n    --color-pink-800: oklch(45.9% 0.187 3.815);\n    --color-pink-900: oklch(40.8% 0.153 2.432);\n    --color-pink-950: oklch(28.4% 0.109 3.907);\n\n    --color-rose-50: oklch(96.9% 0.015 12.422);\n    --color-rose-100: oklch(94.1% 0.03 12.58);\n    --color-rose-200: oklch(89.2% 0.058 10.001);\n    --color-rose-300: oklch(81% 0.117 11.638);\n    --color-rose-400: oklch(71.2% 0.194 13.428);\n    --color-rose-500: oklch(64.5% 0.246 16.439);\n    --color-rose-600: oklch(58.6% 0.253 17.585);\n    --color-rose-700: oklch(51.4% 0.222 16.935);\n    --color-rose-800: oklch(45.5% 0.188 13.697);\n    --color-rose-900: oklch(41% 0.159 10.272);\n    --color-rose-950: oklch(27.1% 0.105 12.094);\n\n    --color-slate-50: oklch(98.4% 0.003 247.858);\n    --color-slate-100: oklch(96.8% 0.007 247.896);\n    --color-slate-200: oklch(92.9% 0.013 255.508);\n    --color-slate-300: oklch(86.9% 0.022 252.894);\n    --color-slate-400: oklch(70.4% 0.04 256.788);\n    --color-slate-500: oklch(55.4% 0.046 257.417);\n    --color-slate-600: oklch(44.6% 0.043 257.281);\n    --color-slate-700: oklch(37.2% 0.044 257.287);\n    --color-slate-800: oklch(27.9% 0.041 260.031);\n    --color-slate-900: oklch(20.8% 0.042 265.755);\n    --color-slate-950: oklch(12.9% 0.042 264.695);\n\n    --color-gray-50: oklch(98.5% 0.002 247.839);\n    --color-gray-100: oklch(96.7% 0.003 264.542);\n    --color-gray-200: oklch(92.8% 0.006 264.531);\n    --color-gray-300: oklch(87.2% 0.01 258.338);\n    --color-gray-400: oklch(70.7% 0.022 261.325);\n    --color-gray-500: oklch(55.1% 0.027 264.364);\n    --color-gray-600: oklch(44.6% 0.03 256.802);\n    --color-gray-700: oklch(37.3% 0.034 259.733);\n    --color-gray-800: oklch(27.8% 0.033 256.848);\n    --color-gray-900: oklch(21% 0.034 264.665);\n    --color-gray-950: oklch(13% 0.028 261.692);\n\n    --color-zinc-50: oklch(98.5% 0 0);\n    --color-zinc-100: oklch(96.7% 0.001 286.375);\n    --color-zinc-200: oklch(92% 0.004 286.32);\n    --color-zinc-300: oklch(87.1% 0.006 286.286);\n    --color-zinc-400: oklch(70.5% 0.015 286.067);\n    --color-zinc-500: oklch(55.2% 0.016 285.938);\n    --color-zinc-600: oklch(44.2% 0.017 285.786);\n    --color-zinc-700: oklch(37% 0.013 285.805);\n    --color-zinc-800: oklch(27.4% 0.006 286.033);\n    --color-zinc-900: oklch(21% 0.006 285.885);\n    --color-zinc-950: oklch(14.1% 0.005 285.823);\n\n    --color-neutral-50: oklch(98.5% 0 0);\n    --color-neutral-100: oklch(97% 0 0);\n    --color-neutral-200: oklch(92.2% 0 0);\n    --color-neutral-300: oklch(87% 0 0);\n    --color-neutral-400: oklch(70.8% 0 0);\n    --color-neutral-500: oklch(55.6% 0 0);\n    --color-neutral-600: oklch(43.9% 0 0);\n    --color-neutral-700: oklch(37.1% 0 0);\n    --color-neutral-800: oklch(26.9% 0 0);\n    --color-neutral-900: oklch(20.5% 0 0);\n    --color-neutral-950: oklch(14.5% 0 0);\n\n    --color-stone-50: oklch(98.5% 0.001 106.423);\n    --color-stone-100: oklch(97% 0.001 106.424);\n    --color-stone-200: oklch(92.3% 0.003 48.717);\n    --color-stone-300: oklch(86.9% 0.005 56.366);\n    --color-stone-400: oklch(70.9% 0.01 56.259);\n    --color-stone-500: oklch(55.3% 0.013 58.071);\n    --color-stone-600: oklch(44.4% 0.011 73.639);\n    --color-stone-700: oklch(37.4% 0.01 67.558);\n    --color-stone-800: oklch(26.8% 0.007 34.298);\n    --color-stone-900: oklch(21.6% 0.006 56.043);\n    --color-stone-950: oklch(14.7% 0.004 49.25);\n\n    --color-mauve-50: oklch(98.5% 0 0);\n    --color-mauve-100: oklch(96% 0.003 325.6);\n    --color-mauve-200: oklch(92.2% 0.005 325.62);\n    --color-mauve-300: oklch(86.5% 0.012 325.68);\n    --color-mauve-400: oklch(71.1% 0.019 323.02);\n    --color-mauve-500: oklch(54.2% 0.034 322.5);\n    --color-mauve-600: oklch(43.5% 0.029 321.78);\n    --color-mauve-700: oklch(36.4% 0.029 323.89);\n    --color-mauve-800: oklch(26.3% 0.024 320.12);\n    --color-mauve-900: oklch(21.2% 0.019 322.12);\n    --color-mauve-950: oklch(14.5% 0.008 326);\n\n    --color-olive-50: oklch(98.8% 0.003 106.5);\n    --color-olive-100: oklch(96.6% 0.005 106.5);\n    --color-olive-200: oklch(93% 0.007 106.5);\n    --color-olive-300: oklch(88% 0.011 106.6);\n    --color-olive-400: oklch(73.7% 0.021 106.9);\n    --color-olive-500: oklch(58% 0.031 107.3);\n    --color-olive-600: oklch(46.6% 0.025 107.3);\n    --color-olive-700: oklch(39.4% 0.023 107.4);\n    --color-olive-800: oklch(28.6% 0.016 107.4);\n    --color-olive-900: oklch(22.8% 0.013 107.4);\n    --color-olive-950: oklch(15.3% 0.006 107.1);\n\n    --color-mist-50: oklch(98.7% 0.002 197.1);\n    --color-mist-100: oklch(96.3% 0.002 197.1);\n    --color-mist-200: oklch(92.5% 0.005 214.3);\n    --color-mist-300: oklch(87.2% 0.007 219.6);\n    --color-mist-400: oklch(72.3% 0.014 214.4);\n    --color-mist-500: oklch(56% 0.021 213.5);\n    --color-mist-600: oklch(45% 0.017 213.2);\n    --color-mist-700: oklch(37.8% 0.015 216);\n    --color-mist-800: oklch(27.5% 0.011 216.9);\n    --color-mist-900: oklch(21.8% 0.008 223.9);\n    --color-mist-950: oklch(14.8% 0.004 228.8);\n\n    --color-taupe-50: oklch(98.6% 0.002 67.8);\n    --color-taupe-100: oklch(96% 0.002 17.2);\n    --color-taupe-200: oklch(92.2% 0.005 34.3);\n    --color-taupe-300: oklch(86.8% 0.007 39.5);\n    --color-taupe-400: oklch(71.4% 0.014 41.2);\n    --color-taupe-500: oklch(54.7% 0.021 43.1);\n    --color-taupe-600: oklch(43.8% 0.017 39.3);\n    --color-taupe-700: oklch(36.7% 0.016 35.7);\n    --color-taupe-800: oklch(26.8% 0.011 36.5);\n    --color-taupe-900: oklch(21.4% 0.009 43.1);\n    --color-taupe-950: oklch(14.7% 0.004 49.3);\n\n    --color-black: #000;\n    --color-white: #fff;\n\n    --spacing: 0.25rem;\n\n    --breakpoint-sm: 40rem;\n    --breakpoint-md: 48rem;\n    --breakpoint-lg: 64rem;\n    --breakpoint-xl: 80rem;\n    --breakpoint-2xl: 96rem;\n\n    --container-3xs: 16rem;\n    --container-2xs: 18rem;\n    --container-xs: 20rem;\n    --container-sm: 24rem;\n    --container-md: 28rem;\n    --container-lg: 32rem;\n    --container-xl: 36rem;\n    --container-2xl: 42rem;\n    --container-3xl: 48rem;\n    --container-4xl: 56rem;\n    --container-5xl: 64rem;\n    --container-6xl: 72rem;\n    --container-7xl: 80rem;\n\n    --text-xs: 0.75rem;\n    --text-xs--line-height: calc(1 / 0.75);\n    --text-sm: 0.875rem;\n    --text-sm--line-height: calc(1.25 / 0.875);\n    --text-base: 1rem;\n    --text-base--line-height: calc(1.5 / 1);\n    --text-lg: 1.125rem;\n    --text-lg--line-height: calc(1.75 / 1.125);\n    --text-xl: 1.25rem;\n    --text-xl--line-height: calc(1.75 / 1.25);\n    --text-2xl: 1.5rem;\n    --text-2xl--line-height: calc(2 / 1.5);\n    --text-3xl: 1.875rem;\n    --text-3xl--line-height: calc(2.25 / 1.875);\n    --text-4xl: 2.25rem;\n    --text-4xl--line-height: calc(2.5 / 2.25);\n    --text-5xl: 3rem;\n    --text-5xl--line-height: 1;\n    --text-6xl: 3.75rem;\n    --text-6xl--line-height: 1;\n    --text-7xl: 4.5rem;\n    --text-7xl--line-height: 1;\n    --text-8xl: 6rem;\n    --text-8xl--line-height: 1;\n    --text-9xl: 8rem;\n    --text-9xl--line-height: 1;\n\n    --font-weight-thin: 100;\n    --font-weight-extralight: 200;\n    --font-weight-light: 300;\n    --font-weight-normal: 400;\n    --font-weight-medium: 500;\n    --font-weight-semibold: 600;\n    --font-weight-bold: 700;\n    --font-weight-extrabold: 800;\n    --font-weight-black: 900;\n\n    --tracking-tighter: -0.05em;\n    --tracking-tight: -0.025em;\n    --tracking-normal: 0em;\n    --tracking-wide: 0.025em;\n    --tracking-wider: 0.05em;\n    --tracking-widest: 0.1em;\n\n    --leading-tight: 1.25;\n    --leading-snug: 1.375;\n    --leading-normal: 1.5;\n    --leading-relaxed: 1.625;\n    --leading-loose: 2;\n\n    --radius-xs: 0.125rem;\n    --radius-sm: 0.25rem;\n    --radius-md: 0.375rem;\n    --radius-lg: 0.5rem;\n    --radius-xl: 0.75rem;\n    --radius-2xl: 1rem;\n    --radius-3xl: 1.5rem;\n    --radius-4xl: 2rem;\n\n    --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);\n    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);\n    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);\n    --shadow-md:\n      0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);\n    --shadow-lg:\n      0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);\n    --shadow-xl:\n      0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);\n    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);\n\n    --inset-shadow-2xs: inset 0 1px rgb(0 0 0 / 0.05);\n    --inset-shadow-xs: inset 0 1px 1px rgb(0 0 0 / 0.05);\n    --inset-shadow-sm: inset 0 2px 4px rgb(0 0 0 / 0.05);\n\n    --drop-shadow-xs: 0 1px 1px rgb(0 0 0 / 0.05);\n    --drop-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.15);\n    --drop-shadow-md: 0 3px 3px rgb(0 0 0 / 0.12);\n    --drop-shadow-lg: 0 4px 4px rgb(0 0 0 / 0.15);\n    --drop-shadow-xl: 0 9px 7px rgb(0 0 0 / 0.1);\n    --drop-shadow-2xl: 0 25px 25px rgb(0 0 0 / 0.15);\n\n    --text-shadow-2xs: 0px 1px 0px rgb(0 0 0 / 0.15);\n    --text-shadow-xs: 0px 1px 1px rgb(0 0 0 / 0.2);\n    --text-shadow-sm:\n      0px 1px 0px rgb(0 0 0 / 0.075), 0px 1px 1px rgb(0 0 0 / 0.075),\n      0px 2px 2px rgb(0 0 0 / 0.075);\n    --text-shadow-md:\n      0px 1px 1px rgb(0 0 0 / 0.1), 0px 1px 2px rgb(0 0 0 / 0.1),\n      0px 2px 4px rgb(0 0 0 / 0.1);\n    --text-shadow-lg:\n      0px 1px 2px rgb(0 0 0 / 0.1), 0px 3px 2px rgb(0 0 0 / 0.1),\n      0px 4px 8px rgb(0 0 0 / 0.1);\n\n    --ease-in: cubic-bezier(0.4, 0, 1, 1);\n    --ease-out: cubic-bezier(0, 0, 0.2, 1);\n    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);\n\n    --animate-spin: spin 1s linear infinite;\n    --animate-ping: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;\n    --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;\n    --animate-bounce: bounce 1s infinite;\n\n    @keyframes spin {\n      to {\n        transform: rotate(360deg);\n      }\n    }\n\n    @keyframes ping {\n      75%,\n      100% {\n        transform: scale(2);\n        opacity: 0;\n      }\n    }\n\n    @keyframes pulse {\n      50% {\n        opacity: 0.5;\n      }\n    }\n\n    @keyframes bounce {\n      0%,\n      100% {\n        transform: translateY(-25%);\n        animation-timing-function: cubic-bezier(0.8, 0, 1, 1);\n      }\n\n      50% {\n        transform: none;\n        animation-timing-function: cubic-bezier(0, 0, 0.2, 1);\n      }\n    }\n\n    --blur-xs: 4px;\n    --blur-sm: 8px;\n    --blur-md: 12px;\n    --blur-lg: 16px;\n    --blur-xl: 24px;\n    --blur-2xl: 40px;\n    --blur-3xl: 64px;\n\n    --perspective-dramatic: 100px;\n    --perspective-near: 300px;\n    --perspective-normal: 500px;\n    --perspective-midrange: 800px;\n    --perspective-distant: 1200px;\n\n    --aspect-video: 16 / 9;\n\n    --default-transition-duration: 150ms;\n    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);\n    --default-font-family: --theme(--font-sans, initial);\n    --default-font-feature-settings: --theme(\n      --font-sans--font-feature-settings,\n      initial\n    );\n    --default-font-variation-settings: --theme(\n      --font-sans--font-variation-settings,\n      initial\n    );\n    --default-mono-font-family: --theme(--font-mono, initial);\n    --default-mono-font-feature-settings: --theme(\n      --font-mono--font-feature-settings,\n      initial\n    );\n    --default-mono-font-variation-settings: --theme(\n      --font-mono--font-variation-settings,\n      initial\n    );\n  }\n\n  /* Deprecated */\n  @theme default inline reference {\n    --blur: 8px;\n    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);\n    --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);\n    --drop-shadow: 0 1px 2px rgb(0 0 0 / 0.1), 0 1px 1px rgb(0 0 0 / 0.06);\n    --radius: 0.25rem;\n    --max-width-prose: 65ch;\n  }\n}\n\n@layer base {\n  /*\n  1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)\n  2. Remove default margins and padding\n  3. Reset all borders.\n*/\n\n  *,\n  ::after,\n  ::before,\n  ::backdrop,\n  ::file-selector-button {\n    box-sizing: border-box; /* 1 */\n    margin: 0; /* 2 */\n    padding: 0; /* 2 */\n    border: 0 solid; /* 3 */\n  }\n\n  /*\n  1. Use a consistent sensible line-height in all browsers.\n  2. Prevent adjustments of font size after orientation changes in iOS.\n  3. Use a more readable tab size.\n  4. Use the user's configured `sans` font-family by default.\n  5. Use the user's configured `sans` font-feature-settings by default.\n  6. Use the user's configured `sans` font-variation-settings by default.\n  7. Disable tap highlights on iOS.\n*/\n\n  html,\n  :host {\n    line-height: 1.5; /* 1 */\n    -webkit-text-size-adjust: 100%; /* 2 */\n    tab-size: 4; /* 3 */\n    font-family: --theme(\n      --default-font-family,\n      ui-sans-serif,\n      system-ui,\n      sans-serif,\n      \"Apple Color Emoji\",\n      \"Segoe UI Emoji\",\n      \"Segoe UI Symbol\",\n      \"Noto Color Emoji\"\n    ); /* 4 */\n    font-feature-settings: --theme(\n      --default-font-feature-settings,\n      normal\n    ); /* 5 */\n    font-variation-settings: --theme(\n      --default-font-variation-settings,\n      normal\n    ); /* 6 */\n    -webkit-tap-highlight-color: transparent; /* 7 */\n  }\n\n  /*\n  1. Add the correct height in Firefox.\n  2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)\n  3. Reset the default border style to a 1px solid border.\n*/\n\n  hr {\n    height: 0; /* 1 */\n    color: inherit; /* 2 */\n    border-top-width: 1px; /* 3 */\n  }\n\n  /*\n  Add the correct text decoration in Chrome, Edge, and Safari.\n*/\n\n  abbr:where([title]) {\n    -webkit-text-decoration: underline dotted;\n    text-decoration: underline dotted;\n  }\n\n  /*\n  Remove the default font size and weight for headings.\n*/\n\n  h1,\n  h2,\n  h3,\n  h4,\n  h5,\n  h6 {\n    font-size: inherit;\n    font-weight: inherit;\n  }\n\n  /*\n  Reset links to optimize for opt-in styling instead of opt-out.\n*/\n\n  a {\n    color: inherit;\n    -webkit-text-decoration: inherit;\n    text-decoration: inherit;\n  }\n\n  /*\n  Add the correct font weight in Edge and Safari.\n*/\n\n  b,\n  strong {\n    font-weight: bolder;\n  }\n\n  /*\n  1. Use the user's configured `mono` font-family by default.\n  2. Use the user's configured `mono` font-feature-settings by default.\n  3. Use the user's configured `mono` font-variation-settings by default.\n  4. Correct the odd `em` font sizing in all browsers.\n*/\n\n  code,\n  kbd,\n  samp,\n  pre {\n    font-family: --theme(\n      --default-mono-font-family,\n      ui-monospace,\n      SFMono-Regular,\n      Menlo,\n      Monaco,\n      Consolas,\n      \"Liberation Mono\",\n      \"Courier New\",\n      monospace\n    ); /* 1 */\n    font-feature-settings: --theme(\n      --default-mono-font-feature-settings,\n      normal\n    ); /* 2 */\n    font-variation-settings: --theme(\n      --default-mono-font-variation-settings,\n      normal\n    ); /* 3 */\n    font-size: 1em; /* 4 */\n  }\n\n  /*\n  Add the correct font size in all browsers.\n*/\n\n  small {\n    font-size: 80%;\n  }\n\n  /*\n  Prevent `sub` and `sup` elements from affecting the line height in all browsers.\n*/\n\n  sub,\n  sup {\n    font-size: 75%;\n    line-height: 0;\n    position: relative;\n    vertical-align: baseline;\n  }\n\n  sub {\n    bottom: -0.25em;\n  }\n\n  sup {\n    top: -0.5em;\n  }\n\n  /*\n  1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)\n  2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)\n  3. Remove gaps between table borders by default.\n*/\n\n  table {\n    text-indent: 0; /* 1 */\n    border-color: inherit; /* 2 */\n    border-collapse: collapse; /* 3 */\n  }\n\n  /*\n  Use the modern Firefox focus style for all focusable elements.\n*/\n\n  :-moz-focusring {\n    outline: auto;\n  }\n\n  /*\n  Add the correct vertical alignment in Chrome and Firefox.\n*/\n\n  progress {\n    vertical-align: baseline;\n  }\n\n  /*\n  Add the correct display in Chrome and Safari.\n*/\n\n  summary {\n    display: list-item;\n  }\n\n  /*\n  Make lists unstyled by default.\n*/\n\n  ol,\n  ul,\n  menu {\n    list-style: none;\n  }\n\n  /*\n  1. Make replaced elements `display: block` by default. (https://github.com/mozdevs/cssremedy/issues/14)\n  2. Add `vertical-align: middle` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)\n      This can trigger a poorly considered lint error in some tools but is included by design.\n*/\n\n  img,\n  svg,\n  video,\n  canvas,\n  audio,\n  iframe,\n  embed,\n  object {\n    display: block; /* 1 */\n    vertical-align: middle; /* 2 */\n  }\n\n  /*\n  Constrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)\n*/\n\n  img,\n  video {\n    max-width: 100%;\n    height: auto;\n  }\n\n  /*\n  1. Inherit font styles in all browsers.\n  2. Remove border radius in all browsers.\n  3. Remove background color in all browsers.\n  4. Ensure consistent opacity for disabled states in all browsers.\n*/\n\n  button,\n  input,\n  select,\n  optgroup,\n  textarea,\n  ::file-selector-button {\n    font: inherit; /* 1 */\n    font-feature-settings: inherit; /* 1 */\n    font-variation-settings: inherit; /* 1 */\n    letter-spacing: inherit; /* 1 */\n    color: inherit; /* 1 */\n    border-radius: 0; /* 2 */\n    background-color: transparent; /* 3 */\n    opacity: 1; /* 4 */\n  }\n\n  /*\n  Restore default font weight.\n*/\n\n  :where(select:is([multiple], [size])) optgroup {\n    font-weight: bolder;\n  }\n\n  /*\n  Restore indentation.\n*/\n\n  :where(select:is([multiple], [size])) optgroup option {\n    padding-inline-start: 20px;\n  }\n\n  /*\n  Restore space after button.\n*/\n\n  ::file-selector-button {\n    margin-inline-end: 4px;\n  }\n\n  /*\n  Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)\n*/\n\n  ::placeholder {\n    opacity: 1;\n  }\n\n  /*\n  Set the default placeholder color to a semi-transparent version of the current text color in browsers that do not\n  crash when using `color-mix(…)` with `currentcolor`. (https://github.com/tailwindlabs/tailwindcss/issues/17194)\n*/\n\n  @supports (not (-webkit-appearance: -apple-pay-button)) /* Not Safari */ or\n    (contain-intrinsic-size: 1px) /* Safari 17+ */ {\n    ::placeholder {\n      color: color-mix(in oklab, currentcolor 50%, transparent);\n    }\n  }\n\n  /*\n  Prevent resizing textareas horizontally by default.\n*/\n\n  textarea {\n    resize: vertical;\n  }\n\n  /*\n  Remove the inner padding in Chrome and Safari on macOS.\n*/\n\n  ::-webkit-search-decoration {\n    -webkit-appearance: none;\n  }\n\n  /*\n  1. Ensure date/time inputs have the same height when empty in iOS Safari.\n  2. Ensure text alignment can be changed on date/time inputs in iOS Safari.\n*/\n\n  ::-webkit-date-and-time-value {\n    min-height: 1lh; /* 1 */\n    text-align: inherit; /* 2 */\n  }\n\n  /*\n  Prevent height from changing on date/time inputs in macOS Safari when the input is set to `display: block`.\n*/\n\n  ::-webkit-datetime-edit {\n    display: inline-flex;\n  }\n\n  /*\n  Remove excess padding from pseudo-elements in date/time inputs to ensure consistent height across browsers.\n*/\n\n  ::-webkit-datetime-edit-fields-wrapper {\n    padding: 0;\n  }\n\n  ::-webkit-datetime-edit,\n  ::-webkit-datetime-edit-year-field,\n  ::-webkit-datetime-edit-month-field,\n  ::-webkit-datetime-edit-day-field,\n  ::-webkit-datetime-edit-hour-field,\n  ::-webkit-datetime-edit-minute-field,\n  ::-webkit-datetime-edit-second-field,\n  ::-webkit-datetime-edit-millisecond-field,\n  ::-webkit-datetime-edit-meridiem-field {\n    padding-block: 0;\n  }\n\n  /*\n  Center dropdown marker shown on inputs with paired `<datalist>`s in Chrome. (https://github.com/tailwindlabs/tailwindcss/issues/18499)\n*/\n\n  ::-webkit-calendar-picker-indicator {\n    line-height: 1;\n  }\n\n  /*\n  Remove the additional `:invalid` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)\n*/\n\n  :-moz-ui-invalid {\n    box-shadow: none;\n  }\n\n  /*\n  Correct the inability to style the border radius in iOS Safari.\n*/\n\n  button,\n  input:where([type=\"button\"], [type=\"reset\"], [type=\"submit\"]),\n  ::file-selector-button {\n    appearance: button;\n  }\n\n  /*\n  Correct the cursor style of increment and decrement buttons in Safari.\n*/\n\n  ::-webkit-inner-spin-button,\n  ::-webkit-outer-spin-button {\n    height: auto;\n  }\n\n  /*\n  Make elements with the HTML hidden attribute stay hidden by default.\n*/\n\n  [hidden]:where(:not([hidden=\"until-found\"])) {\n    display: none !important;\n  }\n}\n\n@layer utilities {\n  @tailwind utilities;\n}\n","@import \"tailwindcss\";\n\n@source \"./\";\n@source \"../../word/src\";\n@source \"../../excel/src\";\n@source \"../../powerpoint/src\";\n\n@theme inline {\n  --color-background: var(--background);\n  --color-foreground: var(--foreground);\n  --color-border: var(--border);\n  --color-input: var(--input);\n  --color-ring: var(--ring);\n  --color-primary: var(--primary);\n  --color-primary-foreground: var(--primary-foreground);\n  --color-secondary: var(--secondary);\n  --color-secondary-foreground: var(--secondary-foreground);\n  --color-muted: var(--muted);\n  --color-muted-foreground: var(--muted-foreground);\n  --color-accent: var(--accent);\n  --color-accent-foreground: var(--accent-foreground);\n  --color-destructive: var(--destructive);\n  --color-card: var(--card);\n  --color-card-foreground: var(--card-foreground);\n  --font-sans: \"Inter\", ui-sans-serif, system-ui, sans-serif;\n  --radius-sm: calc(var(--radius) * 0.6);\n  --radius-md: calc(var(--radius) * 0.8);\n  --radius-lg: var(--radius);\n  --radius-xl: calc(var(--radius) * 1.4);\n  --radius-2xl: calc(var(--radius) * 1.8);\n}\n\n:root {\n  --background: oklch(1 0 0);\n  --foreground: oklch(0.145 0.008 326);\n  --card: oklch(1 0 0);\n  --card-foreground: oklch(0.145 0.008 326);\n  --primary: oklch(0.511 0.096 186.391);\n  --primary-foreground: oklch(0.984 0.014 180.72);\n  --secondary: oklch(0.967 0.001 286.375);\n  --secondary-foreground: oklch(0.21 0.006 285.885);\n  --muted: oklch(0.96 0.003 325.6);\n  --muted-foreground: oklch(0.542 0.034 322.5);\n  --accent: oklch(0.96 0.003 325.6);\n  --accent-foreground: oklch(0.212 0.019 322.12);\n  --destructive: oklch(0.577 0.245 27.325);\n  --border: oklch(0.922 0.005 325.62);\n  --input: oklch(0.922 0.005 325.62);\n  --ring: oklch(0.711 0.019 323.02);\n  --radius: 0.625rem;\n}\n\n@layer base {\n  * {\n    border-color: var(--border);\n  }\n  body {\n    background-color: var(--background);\n    color: var(--foreground);\n    font-family: var(--font-sans);\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    margin: 0;\n    padding: 0;\n  }\n}\n"],"sourceRoot":""}]);
 // Exports
 /* harmony default export */ __webpack_exports__["default"] = (___CSS_LOADER_EXPORT___);
 
@@ -5463,6 +5586,20 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
+function getDomain(url) {
+    try {
+        return new URL(url).hostname.replace(/^www\./, "");
+    }
+    catch (_a) {
+        return url;
+    }
+}
+var SourceBadge = function (_a) {
+    var source = _a.source;
+    return (react__WEBPACK_IMPORTED_MODULE_0__.createElement("a", { href: source.url, target: "_blank", rel: "noopener noreferrer", title: source.title || source.url, className: "inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted hover:bg-muted/70 text-xs text-muted-foreground transition-colors max-w-[200px]" },
+        react__WEBPACK_IMPORTED_MODULE_0__.createElement("img", { src: "https://www.google.com/s2/favicons?domain=".concat(getDomain(source.url), "&sz=32"), alt: "", className: "w-3.5 h-3.5 rounded-sm shrink-0" }),
+        react__WEBPACK_IMPORTED_MODULE_0__.createElement("span", { className: "truncate" }, source.title || getDomain(source.url))));
+};
 var ChatMessage = function (_a) {
     var message = _a.message;
     var isUser = message.role === "user";
@@ -5504,7 +5641,8 @@ var ChatMessage = function (_a) {
                                 var children = _a.children;
                                 return react__WEBPACK_IMPORTED_MODULE_0__.createElement(react__WEBPACK_IMPORTED_MODULE_0__.Fragment, null, children);
                             },
-                        } }, message.content)),
+                        } }, message.content),
+                    message.sources && message.sources.length > 0 && (react__WEBPACK_IMPORTED_MODULE_0__.createElement("div", { className: "flex flex-wrap gap-1.5 mt-2" }, message.sources.map(function (source, i) { return (react__WEBPACK_IMPORTED_MODULE_0__.createElement(SourceBadge, { key: i, source: source })); })))),
                 message.isStreaming && (react__WEBPACK_IMPORTED_MODULE_0__.createElement("span", { className: "inline-flex items-center gap-1.5 mt-1" },
                     react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { className: "animate-spin h-3 w-3 text-primary", xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24" },
                         react__WEBPACK_IMPORTED_MODULE_0__.createElement("circle", { className: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", strokeWidth: "4" }),
@@ -5604,6 +5742,7 @@ var ChatPane = function (_a) {
     var _c = react__WEBPACK_IMPORTED_MODULE_0__.useState(false), isLoading = _c[0], setIsLoading = _c[1];
     var messagesEndRef = react__WEBPACK_IMPORTED_MODULE_0__.useRef(null);
     var abortRef = react__WEBPACK_IMPORTED_MODULE_0__.useRef(null);
+    var chatRef = react__WEBPACK_IMPORTED_MODULE_0__.useRef(new _api_websocket_client__WEBPACK_IMPORTED_MODULE_2__.ChatConnection());
     var adapter = (0,_context_OfficeAdapterContext__WEBPACK_IMPORTED_MODULE_4__.useOfficeAdapter)();
     var mockClient = react__WEBPACK_IMPORTED_MODULE_0__.useMemo(function () { return (0,_api_client__WEBPACK_IMPORTED_MODULE_1__.createChatClient)(apiBaseUrl); }, [apiBaseUrl]);
     var handleStop = function () {
@@ -5664,7 +5803,7 @@ var ChatPane = function (_a) {
         });
     }); };
     var handleSend = function (content) { return __awaiter(void 0, void 0, void 0, function () {
-        var note, userMessage, streamingMessage, selectedContent, _a, result_1, error_1, isAborted, errorContent_1, _b;
+        var note, userMessage, streamingMessage, selectedContent, _a, slideImage, _b, result_1, error_1, isAborted, errorContent_1;
         var _c;
         return __generator(this, function (_d) {
             switch (_d.label) {
@@ -5694,7 +5833,7 @@ var ChatPane = function (_a) {
                     abortRef.current = new AbortController();
                     _d.label = 3;
                 case 3:
-                    _d.trys.push([3, 13, 14, 19]);
+                    _d.trys.push([3, 13, 14, 15]);
                     selectedContent = void 0;
                     _d.label = 4;
                 case 4:
@@ -5707,27 +5846,32 @@ var ChatPane = function (_a) {
                     _a = _d.sent();
                     return [3 /*break*/, 7];
                 case 7:
-                    if (!adapter.enableTrackChanges) return [3 /*break*/, 9];
-                    return [4 /*yield*/, adapter.enableTrackChanges()];
+                    slideImage = null;
+                    if (!adapter.getSlideImage) return [3 /*break*/, 11];
+                    _d.label = 8;
                 case 8:
-                    _d.sent();
-                    _d.label = 9;
-                case 9: return [4 /*yield*/, (0,_api_websocket_client__WEBPACK_IMPORTED_MODULE_2__.startChat)(adapter.appType, content, selectedContent || null, function (action) { return adapter.executeAction(action); }, function (status) {
+                    _d.trys.push([8, 10, , 11]);
+                    return [4 /*yield*/, adapter.getSlideImage()];
+                case 9:
+                    slideImage = _d.sent();
+                    return [3 /*break*/, 11];
+                case 10:
+                    _b = _d.sent();
+                    return [3 /*break*/, 11];
+                case 11: return [4 /*yield*/, chatRef.current.sendMessage(adapter.appType, content, selectedContent || null, function (action) { return adapter.executeAction(action); }, function (status) {
                         setMessages(function (prev) {
                             return prev.map(function (msg) {
                                 return msg.id === streamingMessage.id
                                     ? __assign(__assign({}, msg), { content: status, isStreaming: true }) : msg;
                             });
                         });
-                    }, (_c = abortRef.current) === null || _c === void 0 ? void 0 : _c.signal)];
-                case 10:
-                    result_1 = _d.sent();
-                    if (!adapter.disableTrackChanges) return [3 /*break*/, 12];
-                    return [4 /*yield*/, adapter.disableTrackChanges()];
-                case 11:
-                    _d.sent();
-                    _d.label = 12;
+                    }, (_c = abortRef.current) === null || _c === void 0 ? void 0 : _c.signal, slideImage)];
                 case 12:
+                    result_1 = _d.sent();
+                    // // Disable track changes after Claude is done
+                    // if (adapter.disableTrackChanges) {
+                    //   await adapter.disableTrackChanges();
+                    // }
                     setMessages(function (prev) {
                         return prev.map(function (msg) {
                             return msg.id === streamingMessage.id
@@ -5737,11 +5881,12 @@ var ChatPane = function (_a) {
                                     content: result_1.text || "",
                                     timestamp: Date.now(),
                                     isStreaming: false,
+                                    sources: result_1.sources.length > 0 ? result_1.sources : undefined,
                                 }
                                 : msg;
                         });
                     });
-                    return [3 /*break*/, 19];
+                    return [3 /*break*/, 15];
                 case 13:
                     error_1 = _d.sent();
                     isAborted = error_1 instanceof DOMException && error_1.name === "AbortError";
@@ -5760,24 +5905,16 @@ var ChatPane = function (_a) {
                                 ? __assign(__assign({}, msg), { content: errorContent_1, isStreaming: false }) : msg;
                         });
                     });
-                    return [3 /*break*/, 19];
+                    return [3 /*break*/, 15];
                 case 14:
                     abortRef.current = null;
-                    if (!adapter.disableTrackChanges) return [3 /*break*/, 18];
-                    _d.label = 15;
-                case 15:
-                    _d.trys.push([15, 17, , 18]);
-                    return [4 /*yield*/, adapter.disableTrackChanges()];
-                case 16:
-                    _d.sent();
-                    return [3 /*break*/, 18];
-                case 17:
-                    _b = _d.sent();
-                    return [3 /*break*/, 18];
-                case 18:
+                    // // Ensure track changes is off even if something failed
+                    // if (adapter.disableTrackChanges) {
+                    //   try { await adapter.disableTrackChanges(); } catch { /* ignore */ }
+                    // }
                     setIsLoading(false);
                     return [7 /*endfinally*/];
-                case 19: return [2 /*return*/];
+                case 15: return [2 /*return*/];
             }
         });
     }); };
