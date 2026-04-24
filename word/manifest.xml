@@ -4,11 +4,11 @@
   <Version>1.0.0.1</Version>
   <ProviderName>Bluebook</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Bluebook for Word"/>
+  <DisplayName DefaultValue="Bluebook"/>
   <Description DefaultValue="AI assistant for Word"/>
   <IconUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/word/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/word/assets/icon-64.png"/>
-  <SupportUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/word/"/>
+  <SupportUrl DefaultValue="https://www.blbk.ai"/>
   <AppDomains>
     <AppDomain>https://marcandrewluiz.github.io/bluebook-plugins/word/</AppDomain>
   </AppDomains>
@@ -73,8 +73,8 @@
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GetStarted.Title" DefaultValue="Get started with your sample add-in!"/>
-        <bt:String id="CommandsGroup.Label" DefaultValue="Commands Group"/>
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Open Bluebook"/>
+        <bt:String id="CommandsGroup.Label" DefaultValue=" "/>
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Bluebook"/>
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="GetStarted.Description" DefaultValue="Your sample add-in loaded successfully. Go to the HOME tab and click the 'Show Task Pane' button to get started."/>

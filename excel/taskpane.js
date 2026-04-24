@@ -1076,28 +1076,32 @@ var excelAdapter = {
                 return [3 /*break*/, 43];
               case "createChart":
                 return [3 /*break*/, 45];
-              case "addConditionalFormatting":
+              case "listCharts":
                 return [3 /*break*/, 47];
-              case "clearConditionalFormatting":
+              case "readChartProperties":
                 return [3 /*break*/, 49];
-              case "copyRange":
+              case "addConditionalFormatting":
                 return [3 /*break*/, 51];
-              case "addComment":
+              case "clearConditionalFormatting":
                 return [3 /*break*/, 53];
-              case "getComments":
+              case "copyRange":
                 return [3 /*break*/, 55];
+              case "addComment":
+                return [3 /*break*/, 57];
+              case "getComments":
+                return [3 /*break*/, 59];
               case "deleteComment":
-                return [3 /*break*/, 56];
-              case "sortRange":
-                return [3 /*break*/, 58];
-              case "mergeCells":
                 return [3 /*break*/, 60];
-              case "unmergeCells":
+              case "sortRange":
                 return [3 /*break*/, 62];
-              case "createPivotTable":
+              case "mergeCells":
                 return [3 /*break*/, 64];
+              case "unmergeCells":
+                return [3 /*break*/, 66];
+              case "createPivotTable":
+                return [3 /*break*/, 68];
             }
-            return [3 /*break*/, 66];
+            return [3 /*break*/, 70];
           case 1:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1123,7 +1127,7 @@ var excelAdapter = {
             })];
           case 2:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 3:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1193,7 +1197,7 @@ var excelAdapter = {
             })];
           case 6:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 7:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1270,7 +1274,7 @@ var excelAdapter = {
             })];
           case 10:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 11:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1366,7 +1370,7 @@ var excelAdapter = {
             })];
           case 13:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 14:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1430,7 +1434,7 @@ var excelAdapter = {
             })];
           case 16:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 17:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1450,7 +1454,7 @@ var excelAdapter = {
             })];
           case 18:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 19:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1490,7 +1494,7 @@ var excelAdapter = {
             })];
           case 21:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 22:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1510,7 +1514,7 @@ var excelAdapter = {
             })];
           case 23:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 24:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1530,7 +1534,7 @@ var excelAdapter = {
             })];
           case 25:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 26:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1588,7 +1592,7 @@ var excelAdapter = {
             })];
           case 28:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 29:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1613,7 +1617,7 @@ var excelAdapter = {
             })];
           case 30:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 31:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1635,7 +1639,7 @@ var excelAdapter = {
             })];
           case 32:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 33:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1916,7 +1920,7 @@ var excelAdapter = {
             })];
           case 38:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 39:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1939,7 +1943,7 @@ var excelAdapter = {
             })];
           case 40:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 41:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1962,7 +1966,7 @@ var excelAdapter = {
             })];
           case 42:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 43:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -1985,7 +1989,7 @@ var excelAdapter = {
             })];
           case 44:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 45:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
@@ -2012,8 +2016,105 @@ var excelAdapter = {
             })];
           case 46:
             _b.sent();
-            return [3 /*break*/, 67];
+            return [3 /*break*/, 71];
           case 47:
+            return [4 /*yield*/, Excel.run(function (context) {
+              return __awaiter(_this, void 0, void 0, function () {
+                var sheet, charts;
+                return __generator(this, function (_a) {
+                  switch (_a.label) {
+                    case 0:
+                      sheet = action.params.sheet ? context.workbook.worksheets.getItem(action.params.sheet) : context.workbook.worksheets.getActiveWorksheet();
+                      charts = sheet.charts;
+                      charts.load("items/name,items/chartType,items/title/text,items/top,items/left,items/width,items/height");
+                      return [4 /*yield*/, context.sync()];
+                    case 1:
+                      _a.sent();
+                      return [2 /*return*/, charts.items.map(function (c) {
+                        return {
+                          name: c.name,
+                          chartType: c.chartType,
+                          title: c.title.text || null,
+                          top: c.top,
+                          left: c.left,
+                          width: c.width,
+                          height: c.height
+                        };
+                      })];
+                  }
+                });
+              });
+            })];
+          case 48:
+            return [2 /*return*/, _b.sent()];
+          case 49:
+            return [4 /*yield*/, Excel.run(function (context) {
+              return __awaiter(_this, void 0, void 0, function () {
+                var sheet, chart, colorResults, seriesInfo;
+                return __generator(this, function (_a) {
+                  switch (_a.label) {
+                    case 0:
+                      sheet = action.params.sheet ? context.workbook.worksheets.getItem(action.params.sheet) : context.workbook.worksheets.getActiveWorksheet();
+                      chart = sheet.charts.getItem(action.params.chartName);
+                      chart.load("name,chartType,width,height,top,left");
+                      chart.title.load("text,visible");
+                      chart.legend.load("visible,position");
+                      chart.axes.categoryAxis.load("visible");
+                      chart.axes.categoryAxis.title.load("text");
+                      chart.axes.valueAxis.load("visible,minimum,maximum");
+                      chart.axes.valueAxis.title.load("text");
+                      chart.series.load("items/name");
+                      return [4 /*yield*/, context.sync()];
+                    case 1:
+                      _a.sent();
+                      colorResults = chart.series.items.map(function (s) {
+                        return s.format.fill.getSolidColor();
+                      });
+                      return [4 /*yield*/, context.sync()];
+                    case 2:
+                      _a.sent();
+                      seriesInfo = chart.series.items.map(function (s, i) {
+                        return {
+                          name: s.name,
+                          fillColor: colorResults[i].value
+                        };
+                      });
+                      return [2 /*return*/, {
+                        name: chart.name,
+                        chartType: chart.chartType,
+                        title: {
+                          text: chart.title.text || null,
+                          visible: chart.title.visible
+                        },
+                        width: chart.width,
+                        height: chart.height,
+                        top: chart.top,
+                        left: chart.left,
+                        legend: {
+                          visible: chart.legend.visible,
+                          position: chart.legend.position
+                        },
+                        axes: {
+                          categoryAxis: {
+                            visible: chart.axes.categoryAxis.visible,
+                            title: chart.axes.categoryAxis.title.text || null
+                          },
+                          valueAxis: {
+                            visible: chart.axes.valueAxis.visible,
+                            title: chart.axes.valueAxis.title.text || null,
+                            minimum: chart.axes.valueAxis.minimum,
+                            maximum: chart.axes.valueAxis.maximum
+                          }
+                        },
+                        series: seriesInfo
+                      }];
+                  }
+                });
+              });
+            })];
+          case 50:
+            return [2 /*return*/, _b.sent()];
+          case 51:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range, rule, type, fmt, operator, ruleConfig;
@@ -2056,10 +2157,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 48:
+          case 52:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 49:
+            return [3 /*break*/, 71];
+          case 53:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range;
@@ -2077,10 +2178,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 50:
+          case 54:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 51:
+            return [3 /*break*/, 71];
+          case 55:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var srcSheet, destSheet, source, dest;
@@ -2100,10 +2201,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 52:
+          case 56:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 53:
+            return [3 /*break*/, 71];
+          case 57:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range;
@@ -2121,10 +2222,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 54:
+          case 58:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 55:
+            return [3 /*break*/, 71];
+          case 59:
             return [2 /*return*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, comments, results, _i, _a, c, range;
@@ -2164,7 +2265,7 @@ var excelAdapter = {
                 });
               });
             })];
-          case 56:
+          case 60:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range, comment;
@@ -2183,10 +2284,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 57:
+          case 61:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 58:
+            return [3 /*break*/, 71];
+          case 62:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range, colIndex, ascending;
@@ -2209,10 +2310,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 59:
+          case 63:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 60:
+            return [3 /*break*/, 71];
+          case 64:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range;
@@ -2230,10 +2331,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 61:
+          case 65:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 62:
+            return [3 /*break*/, 71];
+          case 66:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var sheet, range;
@@ -2251,10 +2352,10 @@ var excelAdapter = {
                 });
               });
             })];
-          case 63:
+          case 67:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 64:
+            return [3 /*break*/, 71];
+          case 68:
             return [4 /*yield*/, Excel.run(function (context) {
               return __awaiter(_this, void 0, void 0, function () {
                 var srcSheet, sourceRange, pivotName, destSheet, destCell, pivotTable, rows, _i, rows_1, row, columns, _a, columns_1, col, values, fnMap, _b, values_1, val, dataHierarchy;
@@ -2301,13 +2402,13 @@ var excelAdapter = {
                 });
               });
             })];
-          case 65:
+          case 69:
             _b.sent();
-            return [3 /*break*/, 67];
-          case 66:
+            return [3 /*break*/, 71];
+          case 70:
             console.warn("Unknown action type: ".concat(action.type));
-            _b.label = 67;
-          case 67:
+            _b.label = 71;
+          case 71:
             return [2 /*return*/, undefined];
         }
       });
@@ -5562,8 +5663,9 @@ var ChatInput = function (_a) {
                             react__WEBPACK_IMPORTED_MODULE_0__.createElement("path", { d: "M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" })))),
                     statusText && (react__WEBPACK_IMPORTED_MODULE_0__.createElement("span", { className: "text-[11px] text-muted-foreground" }, statusText))),
                 react__WEBPACK_IMPORTED_MODULE_0__.createElement("div", { className: "flex items-center gap-1" }, disabled && onStop ? (react__WEBPACK_IMPORTED_MODULE_0__.createElement("button", { type: "button", onClick: onStop, className: "flex h-7 w-7 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10" },
-                    react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "currentColor" },
-                        react__WEBPACK_IMPORTED_MODULE_0__.createElement("rect", { x: "4", y: "4", width: "16", height: "16", rx: "2" })))) : (react__WEBPACK_IMPORTED_MODULE_0__.createElement("button", { type: "submit", disabled: disabled || !value.trim(), className: "flex h-7 w-7 items-center justify-center rounded-md text-primary transition-colors hover:bg-accent disabled:opacity-30" },
+                    react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" },
+                        react__WEBPACK_IMPORTED_MODULE_0__.createElement("circle", { cx: "12", cy: "12", r: "10" }),
+                        react__WEBPACK_IMPORTED_MODULE_0__.createElement("rect", { x: "8", y: "8", width: "8", height: "8", rx: "1", fill: "currentColor", stroke: "none" })))) : (react__WEBPACK_IMPORTED_MODULE_0__.createElement("button", { type: "submit", disabled: disabled || !value.trim(), className: "flex h-7 w-7 items-center justify-center rounded-md text-primary transition-colors hover:bg-accent disabled:opacity-30" },
                     react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
                         react__WEBPACK_IMPORTED_MODULE_0__.createElement("line", { x1: "12", y1: "19", x2: "12", y2: "5" }),
                         react__WEBPACK_IMPORTED_MODULE_0__.createElement("polyline", { points: "5 12 12 5 19 12" })))))))));
@@ -5747,6 +5849,54 @@ var ChatPane = function (_a) {
     var chatRef = react__WEBPACK_IMPORTED_MODULE_0__.useRef(new _api_websocket_client__WEBPACK_IMPORTED_MODULE_2__.ChatConnection());
     var adapter = (0,_context_OfficeAdapterContext__WEBPACK_IMPORTED_MODULE_4__.useOfficeAdapter)();
     var mockClient = react__WEBPACK_IMPORTED_MODULE_0__.useMemo(function () { return (0,_api_client__WEBPACK_IMPORTED_MODULE_1__.createChatClient)(apiBaseUrl); }, [apiBaseUrl]);
+    // Register active document on mount, deregister on unmount
+    react__WEBPACK_IMPORTED_MODULE_0__.useEffect(function () {
+        var docPath = null;
+        function register() {
+            return __awaiter(this, void 0, void 0, function () {
+                var doc, _a;
+                return __generator(this, function (_b) {
+                    switch (_b.label) {
+                        case 0:
+                            if (!adapter.getDocumentName)
+                                return [2 /*return*/];
+                            _b.label = 1;
+                        case 1:
+                            _b.trys.push([1, 4, , 5]);
+                            return [4 /*yield*/, adapter.getDocumentName()];
+                        case 2:
+                            doc = _b.sent();
+                            if (!doc.path)
+                                return [2 /*return*/];
+                            docPath = doc.path;
+                            return [4 /*yield*/, fetch("https://localhost:1997/context/active-documents", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ app: adapter.appType, name: doc.name, path: doc.path }),
+                                }).catch(function () { })];
+                        case 3:
+                            _b.sent();
+                            return [3 /*break*/, 5];
+                        case 4:
+                            _a = _b.sent();
+                            return [3 /*break*/, 5];
+                        case 5: return [2 /*return*/];
+                    }
+                });
+            });
+        }
+        register();
+        return function () {
+            if (!docPath)
+                return;
+            var path = docPath;
+            fetch("https://localhost:1997/context/active-documents", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ app: adapter.appType, path: path }),
+            }).catch(function () { });
+        };
+    }, [adapter]);
     var handleStop = function () {
         if (abortRef.current) {
             abortRef.current.abort();

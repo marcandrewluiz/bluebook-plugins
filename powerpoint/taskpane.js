@@ -5896,8 +5896,9 @@ var ChatInput = function (_a) {
                             react__WEBPACK_IMPORTED_MODULE_0__.createElement("path", { d: "M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" })))),
                     statusText && (react__WEBPACK_IMPORTED_MODULE_0__.createElement("span", { className: "text-[11px] text-muted-foreground" }, statusText))),
                 react__WEBPACK_IMPORTED_MODULE_0__.createElement("div", { className: "flex items-center gap-1" }, disabled && onStop ? (react__WEBPACK_IMPORTED_MODULE_0__.createElement("button", { type: "button", onClick: onStop, className: "flex h-7 w-7 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10" },
-                    react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "currentColor" },
-                        react__WEBPACK_IMPORTED_MODULE_0__.createElement("rect", { x: "4", y: "4", width: "16", height: "16", rx: "2" })))) : (react__WEBPACK_IMPORTED_MODULE_0__.createElement("button", { type: "submit", disabled: disabled || !value.trim(), className: "flex h-7 w-7 items-center justify-center rounded-md text-primary transition-colors hover:bg-accent disabled:opacity-30" },
+                    react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" },
+                        react__WEBPACK_IMPORTED_MODULE_0__.createElement("circle", { cx: "12", cy: "12", r: "10" }),
+                        react__WEBPACK_IMPORTED_MODULE_0__.createElement("rect", { x: "8", y: "8", width: "8", height: "8", rx: "1", fill: "currentColor", stroke: "none" })))) : (react__WEBPACK_IMPORTED_MODULE_0__.createElement("button", { type: "submit", disabled: disabled || !value.trim(), className: "flex h-7 w-7 items-center justify-center rounded-md text-primary transition-colors hover:bg-accent disabled:opacity-30" },
                     react__WEBPACK_IMPORTED_MODULE_0__.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
                         react__WEBPACK_IMPORTED_MODULE_0__.createElement("line", { x1: "12", y1: "19", x2: "12", y2: "5" }),
                         react__WEBPACK_IMPORTED_MODULE_0__.createElement("polyline", { points: "5 12 12 5 19 12" })))))))));
@@ -6081,6 +6082,54 @@ var ChatPane = function (_a) {
     var chatRef = react__WEBPACK_IMPORTED_MODULE_0__.useRef(new _api_websocket_client__WEBPACK_IMPORTED_MODULE_2__.ChatConnection());
     var adapter = (0,_context_OfficeAdapterContext__WEBPACK_IMPORTED_MODULE_4__.useOfficeAdapter)();
     var mockClient = react__WEBPACK_IMPORTED_MODULE_0__.useMemo(function () { return (0,_api_client__WEBPACK_IMPORTED_MODULE_1__.createChatClient)(apiBaseUrl); }, [apiBaseUrl]);
+    // Register active document on mount, deregister on unmount
+    react__WEBPACK_IMPORTED_MODULE_0__.useEffect(function () {
+        var docPath = null;
+        function register() {
+            return __awaiter(this, void 0, void 0, function () {
+                var doc, _a;
+                return __generator(this, function (_b) {
+                    switch (_b.label) {
+                        case 0:
+                            if (!adapter.getDocumentName)
+                                return [2 /*return*/];
+                            _b.label = 1;
+                        case 1:
+                            _b.trys.push([1, 4, , 5]);
+                            return [4 /*yield*/, adapter.getDocumentName()];
+                        case 2:
+                            doc = _b.sent();
+                            if (!doc.path)
+                                return [2 /*return*/];
+                            docPath = doc.path;
+                            return [4 /*yield*/, fetch("https://localhost:1997/context/active-documents", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ app: adapter.appType, name: doc.name, path: doc.path }),
+                                }).catch(function () { })];
+                        case 3:
+                            _b.sent();
+                            return [3 /*break*/, 5];
+                        case 4:
+                            _a = _b.sent();
+                            return [3 /*break*/, 5];
+                        case 5: return [2 /*return*/];
+                    }
+                });
+            });
+        }
+        register();
+        return function () {
+            if (!docPath)
+                return;
+            var path = docPath;
+            fetch("https://localhost:1997/context/active-documents", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ app: adapter.appType, path: path }),
+            }).catch(function () { });
+        };
+    }, [adapter]);
     var handleStop = function () {
         if (abortRef.current) {
             abortRef.current.abort();

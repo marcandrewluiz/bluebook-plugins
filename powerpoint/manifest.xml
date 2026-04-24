@@ -4,11 +4,11 @@
   <Version>1.0.0.1</Version>
   <ProviderName>Bluebook</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Bluebook for PowerPoint"/>
+  <DisplayName DefaultValue="Bluebook"/>
   <Description DefaultValue="AI assistant for PowerPoint"/>
   <IconUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/powerpoint/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/powerpoint/assets/icon-64.png"/>
-  <SupportUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/powerpoint/"/>
+  <SupportUrl DefaultValue="https://www.blbk.ai"/>
   <AppDomains>
     <AppDomain>https://marcandrewluiz.github.io/bluebook-plugins/powerpoint/</AppDomain>
   </AppDomains>
@@ -72,9 +72,9 @@
         <bt:Url id="Taskpane.Url" DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/powerpoint/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GetStarted.Title" DefaultValue="Get started with Bluebook for PowerPoint!"/>
-        <bt:String id="CommandsGroup.Label" DefaultValue="Commands Group"/>
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Open Bluebook"/>
+        <bt:String id="GetStarted.Title" DefaultValue="Get started with Bluebook!"/>
+        <bt:String id="CommandsGroup.Label" DefaultValue=" "/>
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Bluebook"/>
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="GetStarted.Description" DefaultValue="Bluebook loaded successfully. Go to the HOME tab and click 'Open Bluebook' to get started."/>
