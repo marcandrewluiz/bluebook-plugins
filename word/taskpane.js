@@ -178,6 +178,270 @@ function createChatClient(baseUrl) {
 
 /***/ }),
 
+/***/ "../shared/src/api/relay-client.ts":
+/*!*****************************************!*\
+  !*** ../shared/src/api/relay-client.ts ***!
+  \*****************************************/
+/***/ (function(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   RelayClient: function() { return /* binding */ RelayClient; }
+/* harmony export */ });
+/**
+ * Relay WebSocket client for cross-plugin data requests.
+ *
+ * Each plugin connects to /relay on mount with its app type and document name.
+ * The sidecar pushes data_request messages when another plugin's Claude session
+ * needs data from this plugin's document. The client executes the request via
+ * the Office adapter and sends the result back.
+ */
+var __awaiter = undefined && undefined.__awaiter || function (thisArg, _arguments, P, generator) {
+  function adopt(value) {
+    return value instanceof P ? value : new P(function (resolve) {
+      resolve(value);
+    });
+  }
+  return new (P || (P = Promise))(function (resolve, reject) {
+    function fulfilled(value) {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    }
+    function rejected(value) {
+      try {
+        step(generator["throw"](value));
+      } catch (e) {
+        reject(e);
+      }
+    }
+    function step(result) {
+      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    }
+    step((generator = generator.apply(thisArg, _arguments || [])).next());
+  });
+};
+var __generator = undefined && undefined.__generator || function (thisArg, body) {
+  var _ = {
+      label: 0,
+      sent: function sent() {
+        if (t[0] & 1) throw t[1];
+        return t[1];
+      },
+      trys: [],
+      ops: []
+    },
+    f,
+    y,
+    t,
+    g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+  return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function () {
+    return this;
+  }), g;
+  function verb(n) {
+    return function (v) {
+      return step([n, v]);
+    };
+  }
+  function step(op) {
+    if (f) throw new TypeError("Generator is already executing.");
+    while (g && (g = 0, op[0] && (_ = 0)), _) try {
+      if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+      if (y = 0, t) op = [op[0] & 2, t.value];
+      switch (op[0]) {
+        case 0:
+        case 1:
+          t = op;
+          break;
+        case 4:
+          _.label++;
+          return {
+            value: op[1],
+            done: false
+          };
+        case 5:
+          _.label++;
+          y = op[1];
+          op = [0];
+          continue;
+        case 7:
+          op = _.ops.pop();
+          _.trys.pop();
+          continue;
+        default:
+          if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) {
+            _ = 0;
+            continue;
+          }
+          if (op[0] === 3 && (!t || op[1] > t[0] && op[1] < t[3])) {
+            _.label = op[1];
+            break;
+          }
+          if (op[0] === 6 && _.label < t[1]) {
+            _.label = t[1];
+            t = op;
+            break;
+          }
+          if (t && _.label < t[2]) {
+            _.label = t[2];
+            _.ops.push(op);
+            break;
+          }
+          if (t[2]) _.ops.pop();
+          _.trys.pop();
+          continue;
+      }
+      op = body.call(thisArg, _);
+    } catch (e) {
+      op = [6, e];
+      y = 0;
+    } finally {
+      f = t = 0;
+    }
+    if (op[0] & 5) throw op[1];
+    return {
+      value: op[0] ? op[1] : void 0,
+      done: true
+    };
+  }
+};
+var RelayClient = /** @class */function () {
+  function RelayClient(appName, docName) {
+    this.ws = null;
+    this.intentionalClose = false;
+    this.reconnectTimer = null;
+    this.pingInterval = null;
+    this.requestHandler = null;
+    this.appName = appName;
+    this.docName = docName;
+  }
+  RelayClient.prototype.connect = function () {
+    var _this = this;
+    this.intentionalClose = false;
+    var params = new URLSearchParams({
+      app_name: this.appName,
+      doc_name: this.docName
+    });
+    var url = "wss://localhost:1997/relay?".concat(params);
+    console.log("[relay] Connecting as ".concat(this.appName, ":").concat(this.docName));
+    var ws = new WebSocket(url);
+    ws.onopen = function () {
+      _this.ws = ws;
+      console.log("[relay] Connected");
+      // Start heartbeat ping every 30s
+      _this.pingInterval = setInterval(function () {
+        var _a;
+        if (((_a = _this.ws) === null || _a === void 0 ? void 0 : _a.readyState) === WebSocket.OPEN) {
+          _this.ws.send(JSON.stringify({
+            type: "ping"
+          }));
+        }
+      }, 30000);
+    };
+    ws.onmessage = function (event) {
+      return __awaiter(_this, void 0, void 0, function () {
+        var msg, request, rid, data, err_1, message;
+        return __generator(this, function (_a) {
+          switch (_a.label) {
+            case 0:
+              try {
+                msg = JSON.parse(event.data);
+              } catch (_b) {
+                return [2 /*return*/];
+              }
+              if (!(msg.type === "data_request" && this.requestHandler)) return [3 /*break*/, 4];
+              request = msg;
+              rid = (request.request_id || "").slice(0, 8);
+              console.log("[relay] Incoming request ".concat(rid, ": action=").concat(request.action));
+              _a.label = 1;
+            case 1:
+              _a.trys.push([1, 3,, 4]);
+              return [4 /*yield*/, this.requestHandler(request)];
+            case 2:
+              data = _a.sent();
+              this.send({
+                type: "data_response",
+                request_id: request.request_id,
+                data: data
+              });
+              console.log("[relay] Responded to ".concat(rid, " (ok)"));
+              return [3 /*break*/, 4];
+            case 3:
+              err_1 = _a.sent();
+              message = err_1 instanceof Error ? err_1.message : "Unknown error";
+              console.log("[relay] Responded to ".concat(rid, " (error: ").concat(message, ")"));
+              this.send({
+                type: "data_response",
+                request_id: request.request_id,
+                data: null,
+                error: message
+              });
+              return [3 /*break*/, 4];
+            case 4:
+              return [2 /*return*/];
+          }
+        });
+      });
+    };
+    ws.onerror = function () {
+      // onclose will fire next — reconnect handled there
+    };
+    ws.onclose = function (event) {
+      _this.ws = null;
+      _this.clearPing();
+      console.log("[relay] Closed: code=".concat(event.code, " reason=").concat(event.reason || "(none)"));
+      if (!_this.intentionalClose) {
+        console.log("[relay] Reconnecting in 3s...");
+        _this.reconnectTimer = setTimeout(function () {
+          return _this.connect();
+        }, 3000);
+      }
+    };
+  };
+  RelayClient.prototype.disconnect = function () {
+    this.intentionalClose = true;
+    this.clearPing();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+  };
+  /** Reconnect with a new document name (e.g., after saving an untitled doc). */
+  RelayClient.prototype.updateDocName = function (newName) {
+    if (newName === this.docName) return;
+    console.log("[relay] Doc renamed: ".concat(this.docName, " \u2192 ").concat(newName));
+    this.docName = newName;
+    // Reconnect so the server registers under the new key
+    this.disconnect();
+    this.connect();
+  };
+  RelayClient.prototype.setRequestHandler = function (handler) {
+    this.requestHandler = handler;
+  };
+  RelayClient.prototype.clearPing = function () {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  };
+  RelayClient.prototype.send = function (data) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data));
+    }
+  };
+  return RelayClient;
+}();
+
+
+/***/ }),
+
 /***/ "../shared/src/api/sync.ts":
 /*!*********************************!*\
   !*** ../shared/src/api/sync.ts ***!
@@ -5737,6 +6001,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _context_OfficeAdapterContext__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../context/OfficeAdapterContext */ "../shared/src/context/OfficeAdapterContext.tsx");
 /* harmony import */ var _ChatMessage__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ./ChatMessage */ "../shared/src/components/ChatMessage.tsx");
 /* harmony import */ var _ChatInput__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./ChatInput */ "../shared/src/components/ChatInput.tsx");
+/* harmony import */ var _api_relay_client__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../api/relay-client */ "../shared/src/api/relay-client.ts");
 var __assign = (undefined && undefined.__assign) || function () {
     __assign = Object.assign || function(t) {
         for (var s, i = 1, n = arguments.length; i < n; i++) {
@@ -5793,6 +6058,7 @@ var __spreadArray = (undefined && undefined.__spreadArray) || function (to, from
     }
     return to.concat(ar || Array.prototype.slice.call(from));
 };
+
 
 
 
@@ -6043,6 +6309,101 @@ var ChatPane = function (_a) {
             if (pollTimer)
                 clearInterval(pollTimer);
             es === null || es === void 0 ? void 0 : es.close();
+        };
+    }, [adapter]);
+    // Relay WebSocket: connect on mount so the sidecar can push cross-plugin
+    // data requests (e.g., Word asking for data from an open Excel workbook).
+    // Includes doc name for multi-document routing, with polling for unsaved renames.
+    var relayRef = react__WEBPACK_IMPORTED_MODULE_0__.useRef(null);
+    react__WEBPACK_IMPORTED_MODULE_0__.useEffect(function () {
+        var pollTimer = null;
+        var cancelled = false;
+        function initRelay() {
+            return __awaiter(this, void 0, void 0, function () {
+                var docName, doc, _a, relay;
+                var _this = this;
+                return __generator(this, function (_b) {
+                    switch (_b.label) {
+                        case 0:
+                            docName = "Untitled";
+                            if (!adapter.getDocumentName) return [3 /*break*/, 4];
+                            _b.label = 1;
+                        case 1:
+                            _b.trys.push([1, 3, , 4]);
+                            return [4 /*yield*/, adapter.getDocumentName()];
+                        case 2:
+                            doc = _b.sent();
+                            docName = doc.name || "Untitled";
+                            return [3 /*break*/, 4];
+                        case 3:
+                            _a = _b.sent();
+                            return [3 /*break*/, 4];
+                        case 4:
+                            if (cancelled)
+                                return [2 /*return*/];
+                            relay = new _api_relay_client__WEBPACK_IMPORTED_MODULE_7__.RelayClient(adapter.appType, docName);
+                            relayRef.current = relay;
+                            relay.setRequestHandler(function (request) { return __awaiter(_this, void 0, void 0, function () {
+                                var action, params;
+                                return __generator(this, function (_a) {
+                                    action = request.action, params = request.params;
+                                    switch (action) {
+                                        case "getDocumentContext":
+                                            return [2 /*return*/, adapter.getDocumentContext()];
+                                        case "getSelectedContent":
+                                            return [2 /*return*/, adapter.getSelectedContent()];
+                                        default:
+                                            // Delegate other actions (readRange, getWorksheets, getSlideText, etc.)
+                                            return [2 /*return*/, adapter.executeAction({ type: action, params: params })];
+                                    }
+                                    return [2 /*return*/];
+                                });
+                            }); });
+                            relay.connect();
+                            // Poll for name changes if document is unsaved
+                            if (docName === "Untitled" && adapter.getDocumentName) {
+                                pollTimer = setInterval(function () { return __awaiter(_this, void 0, void 0, function () {
+                                    var current, _a;
+                                    return __generator(this, function (_b) {
+                                        switch (_b.label) {
+                                            case 0:
+                                                if (cancelled || !adapter.getDocumentName)
+                                                    return [2 /*return*/];
+                                                _b.label = 1;
+                                            case 1:
+                                                _b.trys.push([1, 3, , 4]);
+                                                return [4 /*yield*/, adapter.getDocumentName()];
+                                            case 2:
+                                                current = _b.sent();
+                                                if (current.name && current.name !== "Untitled" && relayRef.current) {
+                                                    relayRef.current.updateDocName(current.name);
+                                                    if (pollTimer) {
+                                                        clearInterval(pollTimer);
+                                                        pollTimer = null;
+                                                    }
+                                                }
+                                                return [3 /*break*/, 4];
+                                            case 3:
+                                                _a = _b.sent();
+                                                return [3 /*break*/, 4];
+                                            case 4: return [2 /*return*/];
+                                        }
+                                    });
+                                }); }, 2000);
+                            }
+                            return [2 /*return*/];
+                    }
+                });
+            });
+        }
+        initRelay();
+        return function () {
+            var _a;
+            cancelled = true;
+            if (pollTimer)
+                clearInterval(pollTimer);
+            (_a = relayRef.current) === null || _a === void 0 ? void 0 : _a.disconnect();
+            relayRef.current = null;
         };
     }, [adapter]);
     var handleStop = function () {
