@@ -4,7 +4,7 @@
   <Version>1.0.0.0</Version>
   <ProviderName>Bluebook</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Bluebook"/>
+  <DisplayName DefaultValue="BlueBook"/>
   <Description DefaultValue="AI assistant for Excel"/>
   <IconUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/excel/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://marcandrewluiz.github.io/bluebook-plugins/excel/assets/icon-64.png"/>
